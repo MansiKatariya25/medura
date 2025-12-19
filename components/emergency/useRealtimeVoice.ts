@@ -88,24 +88,6 @@ export function useRealtimeVoice(active: boolean) {
     setError(null);
 
     try {
-      const tokenRes = await fetch("/api/realtime/token");
-      if (!tokenRes.ok) {
-        throw new Error("Realtime token request failed");
-      }
-      const tokenData = (await tokenRes.json()) as {
-        client_secret?: { value?: string };
-        value?: string;
-        error?: string;
-      };
-      if (tokenData?.error) {
-        throw new Error(tokenData.error);
-      }
-      const ephemeralKey =
-        tokenData?.client_secret?.value || tokenData?.value || "";
-      if (!ephemeralKey) {
-        throw new Error("Realtime token missing");
-      }
-
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
@@ -185,7 +167,6 @@ export function useRealtimeVoice(active: boolean) {
         body: JSON.stringify({
           sdp: pc.localDescription?.sdp || offer.sdp,
           model: DEFAULT_MODEL,
-          ephemeralKey,
         }),
       });
       if (!sessionRes.ok) {
