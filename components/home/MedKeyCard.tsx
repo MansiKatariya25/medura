@@ -34,7 +34,7 @@ export default function MedKeyCard() {
 
     return (
         <div className="relative mx-auto w-full max-w-sm">
-            <div className="perspective-1000 relative aspect-[1.586/1] w-full">
+            <div className="perspective-1000 relative aspect-16/12 md:aspect-16/11 w-full">
                 <motion.div
                     className="relative h-full w-full cursor-pointer transition-all duration-500 will-change-transform"
                     initial={false}
@@ -103,7 +103,7 @@ export default function MedKeyCard() {
                     >
                         <div className="relative h-full w-full overflow-hidden rounded-[28px] border border-white/20 bg-white p-6 shadow-2xl">
                             <div className="flex h-full flex-col items-center justify-center gap-4">
-                                <div className="rounded-xl bg-white p-2 shadow-inner">
+                                <div className="rounded-xl bg-white p-2 shadow-inner ">
                                     <QRCodeSVG
                                         value={qrData}
                                         size={140}

@@ -114,6 +114,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const locationLabel = useLocationLabel();
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [recordSearchQuery, setRecordSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState("home");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -516,6 +517,20 @@ export default function HomeDashboard({ userName }: { userName: string }) {
         <section className="space-y-6">
           <MedKeyCard />
 
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: "Blood", value: "O+", color: "text-red-400 bg-red-400/10" },
+              { label: "Height", value: "182cm", color: "text-blue-400 bg-blue-400/10" },
+              { label: "Weight", value: "75kg", color: "text-orange-400 bg-orange-400/10" },
+              { label: "Allergies", value: "None", color: "text-green-400 bg-green-400/10" },
+            ].map((stat) => (
+              <div key={stat.label} className={`flex flex-col items-center justify-center rounded-2xl border border-white/5 p-3 ${stat.color}`}>
+                <p className="text-[10px] font-medium uppercase tracking-wider opacity-70">{stat.label}</p>
+                <p className="text-sm font-bold">{stat.value}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="rounded-[32px] border border-white/10 bg-[#11121A]/80 p-6 md:flex md:items-center md:justify-between">
             <div className="flex flex-col md:w-1/2">
               <h2 className="text-xl font-semibold text-white">Records Vault</h2>
@@ -523,13 +538,25 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 Access your prescriptions, diagnostic reports, and imaging linked to your ABHA ID.
               </p>
             </div>
-            <button
-              onClick={() => setIsUploadOpen(true)}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-white/10 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/20 md:w-1/3"
-            >
-              <FileText className="h-4 w-4" />
-              Upload New Record
-            </button>
+            <div className="mt-4 flex w-full flex-col gap-3 md:mt-0 md:w-1/2 md:flex-row md:items-center">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                <input
+                  placeholder="Search records..."
+                  value={recordSearchQuery}
+                  onChange={(e) => setRecordSearchQuery(e.target.value)}
+                  className="w-full rounded-xl bg-white/5 py-3 pl-9 pr-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-white/20"
+                />
+              </div>
+              <button
+                onClick={() => setIsUploadOpen(true)}
+                className="flex items-center justify-center gap-2 rounded-xl bg-[#4D7CFF] px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden md:inline">Upload</span>
+                <span className="md:hidden">Upload New</span>
+              </button>
+            </div>
           </div>
 
           <UploadRecordModal
@@ -541,23 +568,26 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           />
 
           {/* Uploaded Records (Dynamic) */}
-          {uploadedRecords.length > 0 && (
+          {/* Uploaded Records (Dynamic) */}
+          {uploadedRecords.filter(r => r.title.toLowerCase().includes(recordSearchQuery.toLowerCase())).length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between px-2">
                 <h3 className="text-sm font-medium text-white/80">Recently Uploaded</h3>
               </div>
               <div className="space-y-2">
-                {uploadedRecords.map((rec) => (
-                  <div key={rec.id} className="flex items-center justify-between rounded-[24px] border border-white/10 bg-[#15161E] p-4">
-                    <div>
-                      <p className="text-sm font-medium text-white">{rec.title}</p>
-                      <p className="text-xs text-uppercase text-white/50">{rec.type.replace('_', ' ')} • {rec.date}</p>
+                {uploadedRecords
+                  .filter(r => r.title.toLowerCase().includes(recordSearchQuery.toLowerCase()))
+                  .map((rec) => (
+                    <div key={rec.id} className="flex items-center justify-between rounded-[24px] border border-white/10 bg-[#15161E] p-4">
+                      <div>
+                        <p className="text-sm font-medium text-white">{rec.title}</p>
+                        <p className="text-xs text-uppercase text-white/50">{rec.type.replace('_', ' ')} • {rec.date}</p>
+                      </div>
+                      <div className="rounded-full bg-green-500/10 px-2 py-1 text-[10px] font-medium text-green-400">
+                        Uploaded
+                      </div>
                     </div>
-                    <div className="rounded-full bg-green-500/10 px-2 py-1 text-[10px] font-medium text-green-400">
-                      Uploaded
-                    </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             </div>
           )}
@@ -569,7 +599,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               <button className="text-xs text-[#4D7CFF]">See all</button>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              {activePrescriptions.map((rx) => (
+              {activePrescriptions.filter(r => r.medicine.toLowerCase().includes(recordSearchQuery.toLowerCase())).map((rx) => (
                 <div key={rx.id} className="rounded-[24px] border border-white/10 bg-[#15161E] p-4">
                   <div className="flex items-start justify-between">
                     <div>
@@ -596,7 +626,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               <h3 className="text-sm font-medium text-white/80">Recent Lab Reports</h3>
             </div>
             <div className="space-y-2">
-              {recentLabs.map((lab) => (
+              {recentLabs.filter(r => r.testName.toLowerCase().includes(recordSearchQuery.toLowerCase())).map((lab) => (
                 <div key={lab.id} className="flex items-center justify-between rounded-[24px] border border-white/10 bg-[#15161E] p-4">
                   <div>
                     <p className="text-sm font-medium text-white">{lab.testName}</p>
@@ -616,7 +646,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               <h3 className="text-sm font-medium text-white/80">Imaging & Scans</h3>
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
-              {recentImaging.map((img) => (
+              {recentImaging.filter(r => r.scanType.toLowerCase().includes(recordSearchQuery.toLowerCase())).map((img) => (
                 <div key={img.id} className="group relative overflow-hidden rounded-[24px] border border-white/10 bg-[#15161E] p-4">
                   <div className="relative z-10">
                     <p className="font-medium text-white">{img.scanType}</p>
