@@ -1,5 +1,11 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Auth + Database setup
+
+1. Create `.env.local` (copy from `.env.local.example`)
+2. Set `MONGODB_URI`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `OLA_MAPS_API_KEY`, `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`
+3. If your dev server runs on a different port (e.g. `3001`), update `NEXTAUTH_URL` to match.
+
 ## Getting Started
 
 First, run the development server:
