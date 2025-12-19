@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
 import {
   Activity,
@@ -123,6 +124,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const startX = useRef(0);
   const countdownRef = useRef<number | null>(null);
   const readyTimeout = useRef<number | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 650);
@@ -152,7 +154,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       return;
     }
 
-    const initId = window.setTimeout(() => setCountdown(10), 0);
+    const initId = window.setTimeout(() => setCountdown(1), 0);
     countdownRef.current = window.setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -160,6 +162,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           countdownRef.current = null;
           setCallState("idle");
           setSlideProgress(0);
+          router.push("/emergency");
           return 0;
         }
         return prev - 1;
@@ -173,6 +176,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
         countdownRef.current = null;
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState]);
 
   useEffect(() => {
