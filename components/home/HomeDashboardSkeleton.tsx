@@ -104,7 +104,7 @@ export default function HomeDashboardSkeleton() {
 
       <nav className="fixed bottom-6 left-1/2 z-20 w-[90%] max-w-[420px] -translate-x-1/2 rounded-full bg-[#151621] px-6 py-4 text-white shadow-[0_15px_35px_rgba(0,0,0,0.4)] lg:max-w-lg">
         <div className="flex items-center justify-between">
-          {Array.from({ length: 4 }).map((index) => (
+          {Array.from({ length: 4 }).map((_, index) => (
             <span
               key={`skeleton-nav-${index}`}
               className="h-12 w-12 rounded-full bg-white/10"

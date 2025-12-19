@@ -9,6 +9,13 @@ declare module "next-auth" {
       dob?: string;
       gender?: "male" | "female" | "other" | "prefer_not_say";
       profileComplete?: boolean;
+      medKey?: {
+        abhaNumber?: string;
+        bloodGroup?: string;
+        allergies?: string[];
+        emergencyContact?: { name: string; phone: string; relation: string };
+        isKycVerified?: boolean;
+      };
     };
   }
 }

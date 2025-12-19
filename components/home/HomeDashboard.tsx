@@ -26,6 +26,9 @@ import {
 } from "lucide-react";
 
 import { doctors } from "@/data/doctors";
+import { activePrescriptions, recentLabs, recentImaging } from "@/data/records";
+import MedKeyCard from "@/components/home/MedKeyCard";
+import UploadRecordModal from "@/components/home/UploadRecordModal";
 
 type IconComponent = ComponentType<{ className?: string }>;
 
@@ -40,7 +43,7 @@ const categories = [
 const navItems = [
   { id: "home", label: "Home", icon: Home },
   { id: "chat", label: "Chat", icon: MessageCircle },
-  { id: "records", label: "Records", icon: FileText },
+  { id: "medkey", label: "MedKey", icon: FileText },
   { id: "profile", label: "Profile", icon: User },
 ];
 
@@ -113,6 +116,8 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState("home");
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [uploadedRecords, setUploadedRecords] = useState<{ id: string, type: string, title: string, date: string, status?: string }[]>([]);
   const [displayedTab, setDisplayedTab] = useState("home");
   const [transitioning, setTransitioning] = useState(false);
   const [callState, setCallState] = useState<
@@ -176,7 +181,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
         countdownRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState]);
 
   useEffect(() => {
@@ -275,93 +280,92 @@ export default function HomeDashboard({ userName }: { userName: string }) {
         </div>
       </section>
 
-        <section className="w-full space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium text-white">Doctors Category</h2>
-            <button className="text-sm text-gray-500 transition-colors hover:text-gray-400">
-              See all
-            </button>
-          </div>
+      <section className="w-full space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-medium text-white">Doctors Category</h2>
+          <button className="text-sm text-gray-500 transition-colors hover:text-gray-400">
+            See all
+          </button>
+        </div>
 
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
-            {isLoading
-              ? Array.from({ length: 5 }).map((_, index) => (
-                  <div
-                  key={`skeleton-chip-${index}`}
-                  className="h-8 w-24 rounded-4xl bg-white/10 animate-pulse"
-                />
-              ))
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
+          {isLoading
+            ? Array.from({ length: 5 }).map((_, index) => (
+              <div
+                key={`skeleton-chip-${index}`}
+                className="h-8 w-24 rounded-4xl bg-white/10 animate-pulse"
+              />
+            ))
             : categories.map((category) => {
-                const CategoryIcon = category.icon;
-                const isActive = activeCategory === category.id;
-                return (
-                  <button
-                    key={category.id}
-                    onClick={() => setActiveCategory(category.id)}
-                    className={`flex shrink-0 items-center gap-1 rounded-4xl px-3 py-2 text-sm transition-colors ${
-                      isActive
-                        ? "bg-white/35 text-white"
-                        : "bg-white/10 text-gray-300 hover:bg-white/20"
+              const CategoryIcon = category.icon;
+              const isActive = activeCategory === category.id;
+              return (
+                <button
+                  key={category.id}
+                  onClick={() => setActiveCategory(category.id)}
+                  className={`flex shrink-0 items-center gap-1 rounded-4xl px-3 py-2 text-sm transition-colors ${isActive
+                    ? "bg-white/35 text-white"
+                    : "bg-white/10 text-gray-300 hover:bg-white/20"
                     }`}
-                  >
-                    <CategoryIcon className="h-4 w-4" />
-                    <span className="whitespace-nowrap">{category.label}</span>
-                  </button>
-                );
-              })}
+                >
+                  <CategoryIcon className="h-4 w-4" />
+                  <span className="whitespace-nowrap">{category.label}</span>
+                </button>
+              );
+            })}
         </div>
       </section>
 
       <section className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 mt-2 pb-6">
         {isLoading
           ? Array.from({ length: 4 }).map((_, index) => (
-              <div
-                key={`skeleton-hero-${index}`}
-                className="rounded-[32px] bg-white/5 p-3 pb-4 animate-pulse"
-              >
-                <div className="h-40 rounded-[26px] bg-white/20" />
-                <div className="mt-4 space-y-2">
-                  <div className="h-4 w-3/4 bg-white/20" />
-                  <div className="h-3 w-1/2 bg-white/20" />
-                  <div className="mt-2 flex gap-2">
-                    <span className="h-9 w-9 rounded-2xl bg-white/10" />
-                    <span className="h-9 w-9 rounded-2xl bg-white/10" />
-                  </div>
+            <div
+              key={`skeleton-hero-${index}`}
+              className="rounded-[32px] bg-white/5 p-3 pb-4 animate-pulse"
+            >
+              <div className="h-40 rounded-[26px] bg-white/20" />
+              <div className="mt-4 space-y-2">
+                <div className="h-4 w-3/4 bg-white/20" />
+                <div className="h-3 w-1/2 bg-white/20" />
+                <div className="mt-2 flex gap-2">
+                  <span className="h-9 w-9 rounded-2xl bg-white/10" />
+                  <span className="h-9 w-9 rounded-2xl bg-white/10" />
                 </div>
               </div>
-            ))
+            </div>
+          ))
           : heroDoctors.map((doctor) => (
-              <div
-                key={doctor.id}
-                className="rounded-[32px] bg-[#191B24] p-3 pb-4"
-              >
-                <div className="relative h-40 overflow-hidden rounded-[26px]">
-                  <Image
-                    src={doctor.image}
-                    alt={doctor.name}
-                    fill
-                    sizes="(max-width: 1024px) 50vw, 230px"
-                    className="object-cover"
-                  />
-                  <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-black/50 px-2 py-1 text-xs font-semibold">
-                    <Star className="h-3.5 w-3.5 fill-[#F9D655] text-[#F9D655]" />
-                    {doctor.rating.toFixed(1)}
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <p className="text-sm font-semibold text-white">{doctor.name}</p>
-                  <p className="text-xs text-white/50">{doctor.specialty}</p>
-                  <div className="mt-3 flex gap-2">
-                    <RoundedIconButton>
-                      <Video className="h-5 w-5" />
-                    </RoundedIconButton>
-                    <RoundedIconButton>
-                      <Calendar className="h-4 w-4" />
-                    </RoundedIconButton>
-                  </div>
+            <div
+              key={doctor.id}
+              className="rounded-[32px] bg-[#191B24] p-3 pb-4"
+            >
+              <div className="relative h-40 overflow-hidden rounded-[26px]">
+                <Image
+                  src={doctor.image}
+                  alt={doctor.name}
+                  fill
+                  sizes="(max-width: 1024px) 50vw, 230px"
+                  className="object-cover"
+                />
+                <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-black/50 px-2 py-1 text-xs font-semibold">
+                  <Star className="h-3.5 w-3.5 fill-[#F9D655] text-[#F9D655]" />
+                  {doctor.rating.toFixed(1)}
                 </div>
               </div>
-            ))}
+              <div className="mt-4">
+                <p className="text-sm font-semibold text-white">{doctor.name}</p>
+                <p className="text-xs text-white/50">{doctor.specialty}</p>
+                <div className="mt-3 flex gap-2">
+                  <RoundedIconButton>
+                    <Video className="h-5 w-5" />
+                  </RoundedIconButton>
+                  <RoundedIconButton>
+                    <Calendar className="h-4 w-4" />
+                  </RoundedIconButton>
+                </div>
+              </div>
+            </div>
+          ))}
       </section>
 
       {isLoading ? (
@@ -507,25 +511,123 @@ export default function HomeDashboard({ userName }: { userName: string }) {
         </section>
       );
     }
-    if (tab === "records") {
+    if (tab === "medkey") {
       return (
-        <section className="space-y-4">
-          <div className="rounded-[32px] border border-white/10 bg-[#11121A]/80 p-6">
-            <h2 className="text-xl font-semibold text-white">Records</h2>
-            <p className="text-sm text-white/60">
-              Vault your prescriptions, imaging, and lab reports in one place.
-            </p>
+        <section className="space-y-6">
+          <MedKeyCard />
+
+          <div className="rounded-[32px] border border-white/10 bg-[#11121A]/80 p-6 md:flex md:items-center md:justify-between">
+            <div className="flex flex-col md:w-1/2">
+              <h2 className="text-xl font-semibold text-white">Records Vault</h2>
+              <p className="text-sm text-white/60">
+                Access your prescriptions, diagnostic reports, and imaging linked to your ABHA ID.
+              </p>
+            </div>
+            <button
+              onClick={() => setIsUploadOpen(true)}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-white/10 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/20 md:w-1/3"
+            >
+              <FileText className="h-4 w-4" />
+              Upload New Record
+            </button>
           </div>
-          <div className="grid gap-4 lg:grid-cols-3">
-            {["Prescriptions", "Labs", "Imaging"].map((label) => (
-              <div
-                key={label}
-                className="rounded-[24px] border border-white/10 bg-[#15161E] p-4 text-sm text-white/70"
-              >
-                {label} overview placeholder.
+
+          <UploadRecordModal
+            isOpen={isUploadOpen}
+            onClose={() => setIsUploadOpen(false)}
+            onUpload={(data) => {
+              setUploadedRecords(prev => [data, ...prev]);
+            }}
+          />
+
+          {/* Uploaded Records (Dynamic) */}
+          {uploadedRecords.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-2">
+                <h3 className="text-sm font-medium text-white/80">Recently Uploaded</h3>
               </div>
-            ))}
+              <div className="space-y-2">
+                {uploadedRecords.map((rec) => (
+                  <div key={rec.id} className="flex items-center justify-between rounded-[24px] border border-white/10 bg-[#15161E] p-4">
+                    <div>
+                      <p className="text-sm font-medium text-white">{rec.title}</p>
+                      <p className="text-xs text-uppercase text-white/50">{rec.type.replace('_', ' ')} • {rec.date}</p>
+                    </div>
+                    <div className="rounded-full bg-green-500/10 px-2 py-1 text-[10px] font-medium text-green-400">
+                      Uploaded
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Active Prescriptions */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-2">
+              <h3 className="text-sm font-medium text-white/80">Active Prescriptions</h3>
+              <button className="text-xs text-[#4D7CFF]">See all</button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {activePrescriptions.map((rx) => (
+                <div key={rx.id} className="rounded-[24px] border border-white/10 bg-[#15161E] p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-semibold text-white">{rx.medicine}</p>
+                      <p className="text-sm text-white/50">{rx.dosage}</p>
+                    </div>
+                    <div className="rounded-full bg-green-500/10 px-2 py-1 text-[10px] font-medium text-green-400">
+                      {rx.status}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-xs text-white/40">
+                    <span>{rx.doctor}</span>
+                    <span>•</span>
+                    <span>{rx.date}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* Recent Labs */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-2">
+              <h3 className="text-sm font-medium text-white/80">Recent Lab Reports</h3>
+            </div>
+            <div className="space-y-2">
+              {recentLabs.map((lab) => (
+                <div key={lab.id} className="flex items-center justify-between rounded-[24px] border border-white/10 bg-[#15161E] p-4">
+                  <div>
+                    <p className="text-sm font-medium text-white">{lab.testName}</p>
+                    <p className="text-xs text-white/50">{lab.laboratory} • {lab.date}</p>
+                  </div>
+                  <div className={`rounded-full px-2 py-1 text-[10px] font-medium ${lab.status === 'Normal' ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`}>
+                    {lab.status}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Imaging */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-2">
+              <h3 className="text-sm font-medium text-white/80">Imaging & Scans</h3>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {recentImaging.map((img) => (
+                <div key={img.id} className="group relative overflow-hidden rounded-[24px] border border-white/10 bg-[#15161E] p-4">
+                  <div className="relative z-10">
+                    <p className="font-medium text-white">{img.scanType}</p>
+                    <p className="text-xs text-white/50">{img.hospital} • {img.date}</p>
+                  </div>
+                  <FileText className="absolute bottom-4 right-4 h-10 w-10 text-white/50 stroke-1" />
+                </div>
+              ))}
+            </div>
+          </div>
+
         </section>
       );
     }
@@ -556,13 +658,12 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       </div>
 
       <nav
-        className={`fixed bottom-6 left-1/2 z-20 w-[90%] max-w-[420px] -translate-x-1/2 rounded-full px-6 py-4 text-white shadow-[0_15px_35px_rgba(0,0,0,0.4)] lg:max-w-lg ${
-          callState === "idle"
-            ? "bg-[#151621]"
-            : callState === "calling"
-              ? "bg-gradient-to-r from-[#0b2d5c] via-[#1c5aa7] to-[#2d7be8]"
-              : "bg-gradient-to-r from-[#4b141a] via-[#7a0f1d] to-[#32090d]"
-        }`}
+        className={`fixed bottom-6 left-1/2 z-20 w-[90%] max-w-[420px] -translate-x-1/2 rounded-full px-6 py-4 text-white shadow-[0_15px_35px_rgba(0,0,0,0.4)] lg:max-w-lg ${callState === "idle"
+          ? "bg-[#151621]"
+          : callState === "calling"
+            ? "bg-gradient-to-r from-[#0b2d5c] via-[#1c5aa7] to-[#2d7be8]"
+            : "bg-gradient-to-r from-[#4b141a] via-[#7a0f1d] to-[#32090d]"
+          }`}
       >
         {callState === "idle" ? (
           <div className="flex items-center justify-between">
