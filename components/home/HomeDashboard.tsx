@@ -17,10 +17,10 @@ import {
   Home,
   MapPin,
   MessageCircle,
-  Plus,
   Search,
   Star,
   User,
+  Users,
   X,
   Video,
 } from "lucide-react";
@@ -94,16 +94,20 @@ function useLocationLabel() {
 function RoundedIconButton({
   className = "",
   children,
+  onClick,
 }: {
   className?: string;
   children: ReactNode;
+  onClick?: () => void;
 }) {
   return (
-    <span
+    <button
+      type="button"
+      onClick={onClick}
       className={`flex h-10 w-10 items-center justify-center rounded-2xl bg-[#202331] text-white ${className}`}
     >
       {children}
-    </span>
+    </button>
   );
 }
 
@@ -243,12 +247,26 @@ export default function HomeDashboard({ userName }: { userName: string }) {
             />
           </div>
           <div className="flex-1">
-            <p className="text-base font-semibold">{userName} 👋</p>
+            <p className="text-base font-semibold">{userName}</p>
             <p className="text-sm text-white/70">Good afternoon</p>
           </div>
-          <button className="rounded-full border border-white/20 bg-white/25 p-3 text-white/70">
-            <Bell className="h-4 w-4 text-white" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-white/20 bg-white/25 p-3 text-white/70"
+              aria-label="Notifications"
+            >
+              <Bell className="h-4 w-4 text-white" />
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-white/20 bg-white/25 p-3 text-white/70"
+              aria-label="Open community"
+              onClick={() => router.push("/community")}
+            >
+              <Users className="h-4 w-4 text-white" />
+            </button>
+          </div>
         </div>
         <div className="flex w-full items-center gap-3">
           <div className="flex w-full items-center gap-2 rounded-full border border-white/40 p-1 text-sm text-white/60">
@@ -355,7 +373,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                     <RoundedIconButton>
                       <Video className="h-5 w-5" />
                     </RoundedIconButton>
-                    <RoundedIconButton>
+                    <RoundedIconButton onClick={() => router.push(`/doctor/${doctor.id}`)}>
                       <Calendar className="h-4 w-4" />
                     </RoundedIconButton>
                   </div>
@@ -436,8 +454,11 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 </p>
               </div>
             </div>
-            <div className="mt-5 flex gap-3">
-              <button className="flex-1 rounded-2xl bg-[#4D7CFF] py-3 text-sm font-semibold">
+              <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => router.push(`/doctor/${featuredDoctor?.id ?? ""}`)}
+                className="flex-1 rounded-2xl bg-[#4D7CFF] py-3 text-sm font-semibold"
+              >
                 Book Now
               </button>
               <RoundedIconButton className="w-12 flex-none border border-white/15 bg-transparent">
@@ -474,7 +495,10 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                     {doctor.description}
                   </p>
                   <div className="mt-3 flex gap-2">
-                    <button className="flex-1 rounded-2xl border border-white/10 py-2 text-sm text-white/80">
+                    <button
+                      onClick={() => router.push(`/doctor/${doctor.id}`)}
+                      className="flex-1 rounded-2xl border border-white/10 py-2 text-sm text-white/80"
+                    >
                       Book Now
                     </button>
                     <RoundedIconButton>
@@ -571,7 +595,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               return (
                 <button
                   key={item.id}
-                  onClick={() => handleTabChange(item.id)}
+                  onClick={() => (item.id === 'profile' ? router.push('/profile') : handleTabChange(item.id))}
                   className={`flex flex-col items-center text-xs ${isActive ? "text-white" : "text-white/50"}`}
                 >
                   <item.icon
@@ -633,7 +657,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 }
               }}
             >
-              <Plus className="mx-auto h-5 w-5" />
+              <Ambulance className="mx-auto h-5 w-5" />
             </button>
           </div>
         ) : (
