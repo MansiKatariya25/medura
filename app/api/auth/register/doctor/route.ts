@@ -4,39 +4,21 @@ import { z } from "zod";
 
 import clientPromise from "@/lib/mongodb";
 
-const registerSchema = z.object({
+const doctorSchema = z.object({
   fullName: z.string().min(2).max(80),
   dob: z.string().min(8).max(32),
-  gender: z.enum(["male", "female", "other", "prefer_not_say"]),
+  specialization: z.string().min(2).max(80),
   email: z.string().email(),
   password: z.string().min(8).max(72),
-  state: z.string().min(2).max(120),
-  location: z.string().optional(),
-});
-
-const doctorRegisterSchema = registerSchema.extend({
-  specialization: z.string().min(2).max(80),
-});
-
-const ambulanceRegisterSchema = z.object({
-  ambulanceNumber: z.string().min(1).max(32),
-  phoneNumber: z.string().min(8).max(20),
-  riderName: z.string().min(2).max(80),
-  email: z.string().email().optional(),
-  password: z.string().min(8).max(72).optional(),
   location: z.string().optional(),
 });
 
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
-  const parsed = registerSchema.safeParse(json);
+  const parsed = doctorSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input." }, { status: 400 });
   }
-
-  const meduraId =
-    `${parsed.data.state.slice(0, 4).toUpperCase().padEnd(4, "X")}` +
-    Math.floor(1000 + Math.random() * 9000).toString();
 
   const emailLower = parsed.data.email.toLowerCase();
   const client = await clientPromise;
@@ -56,21 +38,17 @@ export async function POST(req: Request) {
   const passwordHash = await bcrypt.hash(parsed.data.password, 12);
 
   const res = await db.collection("users").insertOne({
-    role: "patient",
+    role: "doctor",
     name: parsed.data.fullName,
     fullName: parsed.data.fullName,
     dob: parsed.data.dob,
-    gender: parsed.data.gender,
+    specialization: parsed.data.specialization,
     email: parsed.data.email,
     emailLower,
     passwordHash,
-    state: parsed.data.state,
     location: parsed.data.location ?? null,
-    meduraId,
     communityIds: [],
     profileComplete: true,
-    emailVerified: null,
-    image: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   });

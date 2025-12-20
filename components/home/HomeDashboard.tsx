@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
 import {
@@ -26,20 +26,24 @@ import {
   Plus,
 } from "lucide-react";
 
-import { doctors } from "@/data/doctors";
+import { doctors as seedDoctors } from "@/data/doctors";
 import { activePrescriptions, recentLabs, recentImaging } from "@/data/records";
 import MedKeyCard from "@/components/home/MedKeyCard";
 import UploadRecordModal from "@/components/home/UploadRecordModal";
+import { signOut } from "next-auth/react";
+import Button from "@/components/ui/Button";
+import type { Doctor } from "@/schemas/doctor";
+
 
 type IconComponent = ComponentType<{ className?: string }>;
 
-const categories = [
-  { id: "all", label: "All Doctors", icon: HeartPulse as IconComponent },
-  { id: "neuro", label: "Neurologist", icon: Brain as IconComponent },
-  { id: "pediatric", label: "Pediatric", icon: Baby as IconComponent },
-  { id: "general", label: "General", icon: Activity as IconComponent },
-  { id: "cardio", label: "Cardiologist", icon: HeartPulse as IconComponent },
-];
+const categoryIconMap: Record<string, IconComponent> = {
+  all: HeartPulse,
+  neuro: Brain,
+  pediatric: Baby,
+  general: Activity,
+  cardio: HeartPulse,
+};
 
 const navItems = [
   { id: "home", label: "Home", icon: Home },
@@ -121,6 +125,15 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [recordSearchQuery, setRecordSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [doctorList, setDoctorList] = useState<Doctor[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState([
+    { id: "all", label: "All Doctors" },
+  ]);
+  const [doctorPage, setDoctorPage] = useState(1);
+  const [hasMoreDoctors, setHasMoreDoctors] = useState(true);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
+  const loadingMoreRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [selectedTab, setSelectedTab] = useState("home");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadedRecords, setUploadedRecords] = useState<{ id: string, type: string, title: string, date: string, status?: string }[]>([]);
@@ -131,6 +144,8 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   >("idle");
   const [slideProgress, setSlideProgress] = useState(0);
   const [countdown, setCountdown] = useState(10);
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const collapsedCategoryLimit = 6;
   const holdTimer = useRef<number | null>(null);
   const startX = useRef(0);
   const countdownRef = useRef<number | null>(null);
@@ -138,9 +153,114 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const router = useRouter();
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 650);
-    return () => clearTimeout(timer);
+    let mounted = true;
+    const controller = new AbortController();
+
+    const loadCategories = async () => {
+      try {
+        const res = await fetch("/api/doctors/categories", {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          categories?: { id: string; label: string }[];
+        };
+        if (!mounted) return;
+        if (Array.isArray(data?.categories) && data.categories.length > 0) {
+          setCategoryOptions([
+            { id: "all", label: "All Doctors" },
+            ...data.categories,
+          ]);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    loadCategories();
+
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
   }, []);
+
+  const fetchDoctors = useCallback(async (page: number, append: boolean) => {
+    if (loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingDoctors(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: "8",
+      });
+      if (activeCategory && activeCategory !== "all") {
+        params.set("category", activeCategory);
+      }
+      if (searchQuery.trim()) {
+        params.set("query", searchQuery.trim());
+      }
+      const res = await fetch(`/api/doctors?${params.toString()}`, {
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        doctors?: Doctor[];
+        hasMore?: boolean;
+      };
+      if (Array.isArray(data?.doctors)) {
+        setDoctorList((prev) =>
+          append ? [...prev, ...data.doctors!] : data.doctors!
+        );
+      }
+      if (typeof data?.hasMore === "boolean") {
+        setHasMoreDoctors(data.hasMore);
+      } else {
+        setHasMoreDoctors(false);
+      }
+      setDoctorPage(page);
+      if (!append && data?.doctors && data.doctors.length === 0) {
+        setDoctorList([]);
+      }
+    } catch {
+      if (!append) {
+        setDoctorList(seedDoctors);
+      }
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingDoctors(false);
+      setIsLoading(false);
+    }
+  }, [activeCategory, searchQuery]);
+
+  useEffect(() => {
+    setIsLoading(true);
+    setDoctorPage(1);
+    setHasMoreDoctors(true);
+    fetchDoctors(1, false);
+  }, [activeCategory, fetchDoctors, searchQuery]);
+
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (
+          entry.isIntersecting &&
+          hasMoreDoctors &&
+          !loadingMoreRef.current &&
+          !loadingDoctors
+        ) {
+          fetchDoctors(doctorPage + 1, true);
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [doctorPage, fetchDoctors, hasMoreDoctors, loadingDoctors]);
 
   useEffect(() => {
     return () => {
@@ -222,18 +342,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     }, 240);
   };
 
-  const visibleDoctors = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    const filtered =
-      activeCategory === "all"
-        ? doctors
-        : doctors.filter((doc) => doc.category === activeCategory);
-
-    if (!query) return filtered;
-    return filtered.filter((doc) =>
-      `${doc.name} ${doc.specialty}`.toLowerCase().includes(query),
-    );
-  }, [activeCategory, searchQuery]);
+  const visibleDoctors = useMemo(() => doctorList, [doctorList]);
 
   const heroDoctors = visibleDoctors.slice(0, 4);
   const featuredDoctor = visibleDoctors[0];
@@ -300,15 +409,22 @@ export default function HomeDashboard({ userName }: { userName: string }) {
         </div>
       </section>
 
-      <section className="w-full space-y-4">
+      <section className="w-full space-y-4 mt-2">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-medium text-white">Doctors Category</h2>
-          <button className="text-sm text-gray-500 transition-colors hover:text-gray-400">
-            See all
-          </button>
+          {categoryOptions.length > collapsedCategoryLimit ? (
+            <button
+              className="text-sm text-gray-500 transition-colors hover:text-gray-300"
+              onClick={() => setShowAllCategories((prev) => !prev)}
+            >
+              {showAllCategories ? "See less" : "See all"}
+            </button>
+          ) : null}
         </div>
 
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
+        <div
+          className={`${showAllCategories ? "flex flex-wrap gap-2" : "flex gap-2 overflow-x-auto scrollbar-hide"} pb-2`}
+        >
           {isLoading
             ? Array.from({ length: 5 }).map((_, index) => (
               <div
@@ -316,17 +432,22 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 className="h-8 w-24 rounded-4xl bg-white/10 animate-pulse"
               />
             ))
-            : categories.map((category) => {
-              const CategoryIcon = category.icon;
+            : (showAllCategories
+                ? categoryOptions
+                : categoryOptions.slice(0, collapsedCategoryLimit)
+              ).map((category) => {
+              const CategoryIcon =
+                categoryIconMap[category.id] || HeartPulse;
               const isActive = activeCategory === category.id;
               return (
                 <button
                   key={category.id}
                   onClick={() => setActiveCategory(category.id)}
-                  className={`flex shrink-0 items-center gap-1 rounded-4xl px-3 py-2 text-sm transition-colors ${isActive
+                  className={`flex items-center gap-1 rounded-4xl px-3 py-2 text-sm transition-colors ${showAllCategories ? "shrink" : "shrink-0"} ${isActive
                     ? "bg-white/35 text-white"
                     : "bg-white/10 text-gray-300 hover:bg-white/20"
                     }`}
+                  style={showAllCategories ? { maxWidth: "48%" } : undefined}
                 >
                   <CategoryIcon className="h-4 w-4" />
                   <span className="whitespace-nowrap">{category.label}</span>
@@ -337,8 +458,8 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       </section>
 
       <section className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 mt-2 pb-6">
-        {isLoading
-          ? Array.from({ length: 4 }).map((_, index) => (
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, index) => (
             <div
               key={`skeleton-hero-${index}`}
               className="rounded-[32px] bg-white/5 p-3 pb-4 animate-pulse"
@@ -354,15 +475,38 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               </div>
             </div>
           ))
-          : heroDoctors.map((doctor) => (
+        ) : heroDoctors.length === 0 ? (
+          <div className="col-span-full flex flex-col items-center justify-center gap-4 rounded-[28px] border border-white/10 bg-[#0b0f1a] px-6 py-10 text-center shadow-[0_20px_40px_rgba(0,0,0,0.25)]">
+            <svg
+              viewBox="0 0 120 120"
+              className="h-16 w-16 text-white/30"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="60" cy="60" r="42" className="text-white/15" stroke="currentColor" strokeWidth="8" />
+              <path d="M40 60h40" />
+              <path d="M60 40v40" />
+            </svg>
+            <div className="space-y-2">
+              <p className="text-lg font-semibold text-white">No doctors found</p>
+              <p className="text-sm text-white/60">
+                Try adjusting filters or search to see more doctors near you.
+              </p>
+            </div>
+          </div>
+        ) : (
+          heroDoctors.map((doctor) => (
             <div
               key={doctor.id}
               className="rounded-[32px] bg-[#191B24] p-3 pb-4"
             >
               <div className="relative h-40 overflow-hidden rounded-[26px]">
                 <Image
-                  src={doctor.image}
-                  alt={doctor.name}
+                  src={doctor?.image}
+                  alt={doctor?.name}
                   fill
                   sizes="(max-width: 1024px) 50vw, 230px"
                   className="object-cover"
@@ -385,7 +529,9 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 </div>
               </div>
             </div>
-          ))}
+          ))
+        )}
+        <div ref={sentinelRef} className="col-span-full h-1" />
       </section>
 
       {isLoading ? (
@@ -425,7 +571,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
             ))}
           </div>
         </section>
-      ) : (
+      ) : featuredDoctor && listDoctors.length > 0 ? (
         <section className="flex flex-col gap-6 lg:flex-row mt-6">
           <div className="flex-1 rounded-[36px] bg-[#1B1C24] p-5">
             <div className="flex flex-col gap-4 md:flex-row">
@@ -460,7 +606,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 </p>
               </div>
             </div>
-              <div className="mt-5 flex gap-3">
+            <div className="mt-5 flex gap-3">
               <button
                 onClick={() => router.push(`/doctor/${featuredDoctor?.id ?? ""}`)}
                 className="flex-1 rounded-2xl bg-[#4D7CFF] py-3 text-sm font-semibold"
@@ -516,7 +662,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
             ))}
           </div>
         </section>
-      )}
+      ) : null}
     </>
   );
 
@@ -693,6 +839,19 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           <p className="text-sm text-white/60">
             Adjust your notifications, payment methods, and insurance details.
           </p>
+
+          <div className="mt-4 flex items-center gap-3">
+            <Button variant="secondary" onClick={() => signOut({ callbackUrl: "/" })}>
+              Log out
+            </Button>
+            <button
+              type="button"
+              className="text-sm text-white/60 hover:text-white"
+              onClick={() => router.push("/profile")}
+            >
+              Edit profile
+            </button>
+          </div>
         </div>
         <div className="rounded-[24px] border border-white/10 bg-[#15161E] p-4 text-sm text-white/70">
           Profile summary will appear here.
