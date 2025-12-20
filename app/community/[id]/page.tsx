@@ -156,7 +156,7 @@ export default function CommunityDetailPage() {
     return (
       <div className="min-h-screen bg-[#05060B] px-4 py-6 text-white">
         <button
-          onClick={() => router.push("/community")}
+          onClick={() => router.back()}
           className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/70"
         >
           Back to communities
@@ -173,7 +173,7 @@ export default function CommunityDetailPage() {
       <header className="sticky top-0 z-10 border-b border-white/10 bg-[#0B0C12]/95 px-4 py-4 backdrop-blur">
         <div className="mx-auto flex w-full max-w-5xl items-center gap-3">
           <button
-            onClick={() => router.push("/community")}
+            onClick={() => router.back()}
             className="rounded-full border border-white/10 bg-white/5 p-2 text-white/70"
             aria-label="Back"
           >

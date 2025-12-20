@@ -16,7 +16,6 @@ import {
   HeartPulse,
   Home,
   MapPin,
-  MessageCircle,
   Search,
   Star,
   User,
@@ -43,7 +42,7 @@ const categories = [
 
 const navItems = [
   { id: "home", label: "Home", icon: Home },
-  { id: "chat", label: "Chat", icon: MessageCircle },
+  { id: "community", label: "Community", icon: Users },
   { id: "medkey", label: "MedKey", icon: FileText },
   { id: "profile", label: "Profile", icon: User },
 ];
@@ -125,6 +124,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadedRecords, setUploadedRecords] = useState<{ id: string, type: string, title: string, date: string, status?: string }[]>([]);
   const [displayedTab, setDisplayedTab] = useState("home");
+  const [avatarImage, setAvatarImage] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
   const [callState, setCallState] = useState<
     "idle" | "ready" | "sliding" | "calling"
@@ -140,6 +140,22 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 650);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const read = () => {
+      if (typeof window === "undefined") return;
+      const stored = window.localStorage.getItem("medura:profile-image");
+      setAvatarImage(stored);
+    };
+    read();
+    const listener = (event: StorageEvent) => {
+      if (event.key === "medura:profile-image") {
+        read();
+      }
+    };
+    window.addEventListener("storage", listener);
+    return () => window.removeEventListener("storage", listener);
   }, []);
 
   useEffect(() => {
@@ -244,14 +260,21 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       <section className="space-y-4">
         <div className="flex items-center gap-3">
           <div className="relative h-12 w-12 overflow-hidden rounded-full border border-white">
-            <Image
-              src="https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=320&q=80"
-              alt={userName}
-              fill
-              sizes="48px"
-              className="object-cover"
-              priority
-            />
+            {avatarImage ? (
+              <div
+                className="h-full w-full bg-cover bg-center"
+                style={{ backgroundImage: `url(${avatarImage})` }}
+              />
+            ) : (
+              <Image
+                src="https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=320&q=80"
+                alt={userName}
+                fill
+                sizes="48px"
+                className="object-cover"
+                priority
+              />
+            )}
           </div>
           <div className="flex-1">
             <p className="text-base font-semibold">{userName}</p>
@@ -264,14 +287,6 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               aria-label="Notifications"
             >
               <Bell className="h-4 w-4 text-white" />
-            </button>
-            <button
-              type="button"
-              className="rounded-full border border-white/20 bg-white/25 p-3 text-white/70"
-              aria-label="Open community"
-              onClick={() => router.push("/community")}
-            >
-              <Users className="h-4 w-4 text-white" />
             </button>
           </div>
         </div>
@@ -727,7 +742,11 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               return (
                 <button
                   key={item.id}
-                  onClick={() => (item.id === 'profile' ? router.push('/profile') : handleTabChange(item.id))}
+                  onClick={() => {
+                    if (item.id === "profile") return router.push("/profile");
+                    if (item.id === "community") return router.push("/community");
+                    return handleTabChange(item.id);
+                  }}
                   className={`flex flex-col items-center text-xs ${isActive ? "text-white" : "text-white/50"}`}
                 >
                   <item.icon
