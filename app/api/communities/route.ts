@@ -62,7 +62,7 @@ export async function GET(req: Request) {
       const filters = ids.map((val) => (ObjectId.isValid(val) ? new ObjectId(val) : val));
       const docs = await db
         .collection("communities")
-        .find({ _id: { $in: filters } })
+        .find({ _id: { $in: filters } as any })
         .toArray();
       const memberCounts = await getMemberCounts(db, ids);
       const withCounts = docs.map((c: any) => {

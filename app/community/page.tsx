@@ -49,6 +49,9 @@ export default function CommunityPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [filter, setFilter] = useState<"all" | "nearby">("all");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [newAvatarFile, setNewAvatarFile] = useState<File | null>(null);
+  const [newAvatarPreview, setNewAvatarPreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -89,7 +92,7 @@ export default function CommunityPage() {
       (pos) => {
         setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       },
-      () => {},
+      () => { },
       { enableHighAccuracy: true, timeout: 6000 }
     );
   }, []);
@@ -101,6 +104,7 @@ export default function CommunityPage() {
       JSON.stringify(joinedIds),
     );
   }, [joinedIds]);
+
 
   const loadCommunities = async (reset = false) => {
     if (loadingMore) return;
@@ -172,6 +176,14 @@ export default function CommunityPage() {
 
   const filtered = useMemo(() => listForTab, [listForTab]);
 
+  const joinedCount = joinedIds.length;
+  const publicCount = Math.max(
+    0,
+    communities.filter(
+      (community) => !joinedIds.includes(String(community._id)),
+    ).length,
+  );
+
   const handleJoin = async (id: string) => {
     if (joinedIds.includes(id)) return;
     const userId = session?.user?.id ? String(session.user.id) : null;
@@ -207,10 +219,42 @@ export default function CommunityPage() {
   const [newLocation, setNewLocation] = useState("");
   const [newCoords, setNewCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [newTags, setNewTags] = useState("");
-  const [newAvatarUrl, setNewAvatarUrl] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!newAvatarFile) {
+      setNewAvatarPreview(null);
+      return;
+    }
+    const preview = URL.createObjectURL(newAvatarFile);
+    setNewAvatarPreview(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [newAvatarFile]);
+
+  const uploadCommunityImage = async () => {
+    if (!newAvatarFile) return undefined;
+    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+    if (!cloudName || !uploadPreset) {
+      throw new Error("Cloudinary configuration is missing.");
+    }
+    setUploadingImage(true);
+    const formData = new FormData();
+    formData.append("file", newAvatarFile);
+    formData.append("upload_preset", uploadPreset);
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      { method: "POST", body: formData },
+    );
+    const data = await res.json().catch(() => null);
+    setUploadingImage(false);
+    if (!res.ok) {
+      throw new Error(data?.error?.message || "Image upload failed");
+    }
+    return data?.secure_url as string | undefined;
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -273,6 +317,7 @@ export default function CommunityPage() {
     }
     setCreating(true);
     try {
+      const avatarUrl = await uploadCommunityImage();
       const payload = {
         name: newName.trim(),
         description: newDescription.trim(),
@@ -283,7 +328,7 @@ export default function CommunityPage() {
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean),
-        avatarUrl: newAvatarUrl.trim() || undefined,
+        avatarUrl,
         createdBy: session?.user?.id
           ? { id: String(session.user.id), name: session.user.name || "Member" }
           : undefined,
@@ -308,12 +353,14 @@ export default function CommunityPage() {
       setNewLocation("");
       setNewCoords(null);
       setNewTags("");
-      setNewAvatarUrl("");
+      setNewAvatarFile(null);
+      setNewAvatarPreview(null);
       setCreateError(null);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create community");
     } finally {
       setCreating(false);
+      setUploadingImage(false);
     }
   };
 
@@ -377,46 +424,51 @@ export default function CommunityPage() {
 
         <div className="relative flex items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1">
           <div
-            className={`absolute inset-y-1 w-[calc(50%-6px)] rounded-full bg-[#4D7CFF] transition-transform duration-300 ${
-              activeTab === "joined" ? "translate-x-[calc(100%+6px)]" : "translate-x-0"
-            }`}
+            className={`absolute inset-y-1 w-[calc(50%-6px)] rounded-full bg-[#4D7CFF] transition-transform duration-300 ${activeTab === "joined" ? "translate-x-[calc(100%+6px)]" : "translate-x-0"
+              }`}
           />
           <button
-            className={`relative z-10 flex-1 rounded-full px-4 py-2 text-xs font-semibold ${
-              activeTab === "public" ? "text-white" : "text-white/60"
-            }`}
+            className={`relative z-10 flex-1 rounded-full px-4 py-2 text-xs font-semibold ${activeTab === "public" ? "text-white" : "text-white/60"
+              }`}
             onClick={() => handleTabChange("public")}
           >
-            Public communities
+            <span className="inline-flex items-center gap-2">
+              Public communities
+              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/15 px-1 text-[10px] text-white/80">
+                {publicCount}
+              </span>
+            </span>
           </button>
           <button
-            className={`relative z-10 flex-1 rounded-full px-4 py-2 text-xs font-semibold ${
-              activeTab === "joined" ? "text-white" : "text-white/60"
-            }`}
+            className={`relative z-10 flex-1 rounded-full px-4 py-2 text-xs font-semibold ${activeTab === "joined" ? "text-white" : "text-white/60"
+              }`}
             onClick={() => handleTabChange("joined")}
           >
-            Joined
+            <span className="inline-flex items-center gap-2">
+              Joined
+              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/15 px-1 text-[10px] text-white/80">
+                {joinedCount}
+              </span>
+            </span>
           </button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
           <span className="text-white/50">Filter</span>
           <button
-            className={`rounded-full px-3 py-1 transition ${
-              filter === "all"
+            className={`rounded-full px-3 py-1 transition ${filter === "all"
                 ? "bg-white/10 text-white"
                 : "text-white/60 hover:text-white"
-            }`}
+              }`}
             onClick={() => setFilter("all")}
           >
             All
           </button>
           <button
-            className={`flex items-center gap-1 rounded-full px-3 py-1 transition ${
-              filter === "nearby"
+            className={`flex items-center gap-1 rounded-full px-3 py-1 transition ${filter === "nearby"
                 ? "bg-white/10 text-white"
                 : "text-white/60 hover:text-white"
-            }`}
+              }`}
             onClick={() => setFilter("nearby")}
           >
             <MapPin className="h-3.5 w-3.5" />
@@ -430,104 +482,103 @@ export default function CommunityPage() {
           ) : null}
         </div>
 
-        <section className="space-y-2 rounded-[24px] border border-white/10 bg-[#11121A] p-3">
+        <section className="space-y-2 rounded-3xl border border-white/10 bg-[#11121A] p-3">
           <div
-            className={`transition-all duration-300 ${
-              transitioning
+            className={`transition-all duration-300 ${transitioning
                 ? tabDirection === "right"
                   ? "opacity-0 translate-x-6"
                   : "opacity-0 -translate-x-6"
                 : "opacity-100 translate-x-0"
-            }`}
+              }`}
           >
-          {loading && communities.length === 0 ? (
-            Array.from({ length: 5 }).map((_, idx) => (
-              <div
-                key={`community-skeleton-${idx}`}
-                className="flex w-full items-center gap-3 rounded-[18px] px-3 py-3"
-              >
-                <div className="h-11 w-11 rounded-full bg-white/10 animate-pulse" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 w-1/3 rounded bg-white/10 animate-pulse" />
-                  <div className="h-3 w-1/5 rounded bg-white/10 animate-pulse" />
-                </div>
-                <div className="h-6 w-14 rounded-full bg-white/10 animate-pulse" />
-              </div>
-            ))
-          ) : filtered.length === 0 ? (
-            <p className="px-3 py-6 text-sm text-white/50">
-              {displayedTab === "joined"
-                ? "No joined communities yet."
-                : "No public communities found."}
-            </p>
-          ) : (
-            filtered.map((community) => {
-              const id = String(community._id);
-              const joined = joinedIds.includes(id);
-              return (
-                <Link
-                  key={id}
-                  href={`/community/${id}`}
-                  className="flex w-full items-center gap-3 rounded-[18px] px-3 py-1.5 text-left transition hover:bg-white/5"
+            {loading && communities.length === 0 ? (
+              Array.from({ length: 5 }).map((_, idx) => (
+                <div
+                  key={`community-skeleton-${idx}`}
+                  className="flex w-full items-center gap-3 rounded-[18px] px-3 py-3"
                 >
-                  <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#4D7CFF] to-[#7C3AED] text-[11px] font-semibold text-white">
-                    {community.avatarUrl ? (
-                      <img
-                        src={community.avatarUrl}
-                        alt={community.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      community.name?.slice(0, 2).toUpperCase()
-                    )}
+                  <div className="h-11 w-11 rounded-full bg-white/10 animate-pulse" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-1/3 rounded bg-white/10 animate-pulse" />
+                    <div className="h-3 w-1/5 rounded bg-white/10 animate-pulse" />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-white">
-                      {community.name}
-                    </p>
-                    <div className="flex items-center gap-2 text-[11px] text-white/50">
-                      <Users className="h-3.5 w-3.5" />
-                      {(() => {
-                        const count = community.members ?? 0;
-                        if (count <= 1) return "New";
-                        return String(count);
-                      })()}
-                      {community.locationName ? (
-                        <span className="flex min-w-0 items-center gap-1 text-white/40">
-                          <MapPin className="h-3 w-3" />
-                          <span className="max-w-[140px] truncate">
-                            {community.locationName?.slice(0, 15)}...
-                          </span>
-                        </span>
-                      ) : null}
+                  <div className="h-6 w-14 rounded-full bg-white/10 animate-pulse" />
+                </div>
+              ))
+            ) : filtered.length === 0 ? (
+              <p className="px-3 py-6 text-sm text-white/50">
+                {displayedTab === "joined"
+                  ? "No joined communities yet."
+                  : "No public communities found."}
+              </p>
+            ) : (
+              filtered.map((community) => {
+                const id = String(community._id);
+                const joined = joinedIds.includes(id);
+                return (
+                  <Link
+                    key={id}
+                    href={`/community/${id}`}
+                    className="flex w-full items-center gap-3 rounded-[18px] px-3 py-1 text-left transition hover:bg-white/5"
+                  >
+                    <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#4D7CFF] to-[#7C3AED] text-[11px] font-semibold text-white">
+                      {community.avatarUrl ? (
+                        <img
+                          src={community.avatarUrl}
+                          alt={community.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        community.name?.slice(0, 2).toUpperCase()
+                      )}
                     </div>
-                  </div>
-                  {joined ? (
-                    <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/60">
-                      Joined
-                    </span>
-                  ) : (
-                    <button
-                      onClick={(event) => {
-                        event.preventDefault();
-                        handleJoin(id);
-                      }}
-                      className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/60"
-                    >
-                      Join
-                    </button>
-                  )}
-                </Link>
-              );
-            })
-          )}
-          <div ref={sentinelRef} className="h-4 w-full" />
-          {loadingMore ? (
-            <div className="flex items-center justify-center gap-2 py-3 text-xs text-white/50">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading more...
-            </div>
-          ) : null}
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-white">
+                        {community.name}
+                      </p>
+                      <div className="flex items-center gap-2 text-[11px] text-white/50">
+                        <Users className="h-3.5 w-3.5" />
+                        {(() => {
+                          const count = community.members ?? 0;
+                          if (count <= 1) return "New";
+                          return String(count);
+                        })()}
+                        {community.locationName ? (
+                          <span className="flex min-w-0 items-center gap-1 text-white/40">
+                            <MapPin className="h-3 w-3" />
+                            <span className="max-w-[140px] truncate">
+                              {community.locationName?.slice(0, 15)}...
+                            </span>
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    {joined ? (
+                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/60">
+                        Joined
+                      </span>
+                    ) : (
+                      <button
+                        onClick={(event) => {
+                          event.preventDefault();
+                          handleJoin(id);
+                        }}
+                        className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/60"
+                      >
+                        Join
+                      </button>
+                    )}
+                  </Link>
+                );
+              })
+            )}
+            <div ref={sentinelRef} className="h-4 w-full" />
+            {loadingMore ? (
+              <div className="flex items-center justify-center gap-2 py-3 text-xs text-white/50">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading more...
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -577,7 +628,7 @@ export default function CommunityPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="gap-3">
                   <div className="relative">
                     <label className="mb-1 block text-xs text-white/60">Location</label>
                     <div className="relative">
@@ -647,13 +698,35 @@ export default function CommunityPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs text-white/60">Profile image URL (optional)</label>
-                  <input
-                    value={newAvatarUrl}
-                    onChange={(e) => setNewAvatarUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full rounded-md border border-white/6 bg-transparent px-3 py-2 text-white placeholder:text-white/40 focus:outline-none"
-                  />
+                  <label className="mb-1 block text-xs text-white/60">Community image</label>
+                  <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3">
+                    <div className="h-12 w-12 overflow-hidden rounded-full border border-white/10 bg-[#11131A]">
+                      {newAvatarPreview ? (
+                        <img
+                          src={newAvatarPreview}
+                          alt="Community preview"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-[10px] text-white/40">
+                          Image
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) =>
+                          setNewAvatarFile(event.target.files?.[0] ?? null)
+                        }
+                        className="w-full text-xs text-white/60 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white"
+                      />
+                      <p className="mt-1 text-[11px] text-white/40">
+                        PNG or JPG. Uploads to Cloudinary.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 {createError ? (
@@ -672,10 +745,14 @@ export default function CommunityPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={creating}
+                    disabled={creating || uploadingImage}
                     className="rounded-full bg-[#0b5cff] px-4 py-2 text-sm font-semibold"
                   >
-                    {creating ? "Creating..." : "Create community"}
+                    {uploadingImage
+                      ? "Uploading..."
+                      : creating
+                        ? "Creating..."
+                        : "Create community"}
                   </button>
                 </div>
               </form>

@@ -69,10 +69,13 @@ export default function CommunityDetailPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const isJoined = joinedIds.includes(id);
   const wsRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const dateRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const scrollRafRef = useRef<number | null>(null);
   const [currentDateLabel, setCurrentDateLabel] = useState("Today");
@@ -165,7 +168,7 @@ export default function CommunityDetailPage() {
       (pos) => {
         setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       },
-      () => {},
+      () => { },
       { enableHighAccuracy: true, timeout: 6000 }
     );
   }, []);
@@ -175,8 +178,7 @@ export default function CommunityDetailPage() {
     if (!id) return;
     const url =
       process.env.NEXT_PUBLIC_WS_URL ||
-      `${window.location.protocol === "https:" ? "wss" : "ws"}://${
-        window.location.host
+      `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host
       }/ws/community`;
     try {
       const ws = new WebSocket(url);
@@ -203,6 +205,7 @@ export default function CommunityDetailPage() {
       ws.addEventListener("message", (event) => {
         try {
           const payload = JSON.parse(event.data) as {
+            messageId: string;
             type?: string;
             groupId?: string;
             from?: string;
@@ -211,28 +214,28 @@ export default function CommunityDetailPage() {
             authorId?: string | null;
           };
           if (payload.groupId !== id) return;
-            if (payload.type === "message" && payload.text) {
-              if (payload.messageId && sentMessageIdsRef.current.has(payload.messageId)) {
-                return;
-              }
-              if (payload.from && payload.from === currentUserName) {
-                return;
-              }
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `msg-${Date.now()}`,
-                  communityId: id,
-                  authorName: payload.from || "Member",
-                  authorId: payload.authorId || null,
-                  text: payload.text,
-                  createdAt: payload.time
-                    ? new Date(payload.time).toISOString()
-                    : undefined,
-                },
-              ]);
+          if (payload.type === "message" && payload.text) {
+            if (payload.messageId && sentMessageIdsRef.current.has(payload.messageId)) {
+              return;
             }
-          } catch {
+            if (payload.from && payload.from === currentUserName) {
+              return;
+            }
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `msg-${Date.now()}`,
+                communityId: id,
+                authorName: payload.from || "Member",
+                authorId: payload.authorId || null,
+                text: payload.text || "",
+                createdAt: payload.time
+                  ? new Date(payload.time).toISOString()
+                  : new Date().toISOString(),
+              },
+            ]);
+          }
+        } catch {
           // ignore
         }
       });
@@ -455,6 +458,16 @@ export default function CommunityDetailPage() {
     return `${community.members ?? 0} members`;
   }, [community]);
 
+  const visibleMessages = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return messages;
+    return messages.filter((msg) => {
+      const body = msg.text?.toLowerCase() || "";
+      const author = msg.authorName?.toLowerCase() || "";
+      return body.includes(term) || author.includes(term);
+    });
+  }, [messages, searchTerm]);
+
   const getDateLabel = (value?: string) => {
     if (!value) return "Today";
     const msgDate = new Date(value);
@@ -495,11 +508,18 @@ export default function CommunityDetailPage() {
     updateCurrentDateLabel();
   }, [messages, updateCurrentDateLabel]);
 
+  useEffect(() => {
+    if (!showSearch) return;
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+  }, [showSearch]);
+
   if (!community && !loadingCommunity) {
     return (
       <div className="min-h-screen bg-[#05060B] px-4 py-6 text-white">
         <button
-          onClick={() => router.push("/community")}
+          onClick={() => router.back()}
           className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/70"
         >
           Back to communities
@@ -516,7 +536,7 @@ export default function CommunityDetailPage() {
       <header className="sticky top-0 z-10 border-b border-white/10 bg-[#0B0C12]/95 px-4 py-4 backdrop-blur">
         <div className="mx-auto flex w-full max-w-5xl items-center gap-3">
           <button
-            onClick={() => router.push("/community")}
+            onClick={() => router.back()}
             className="rounded-full border border-white/10 bg-white/5 p-2 text-white/70"
             aria-label="Back"
           >
@@ -544,7 +564,14 @@ export default function CommunityDetailPage() {
             <p className="text-xs text-white/50">{headerSubtitle}</p>
           </button>
           <div className="flex items-center gap-2 text-white/60">
-            <button className="rounded-full border border-white/10 p-2">
+            <button
+              className="rounded-full border border-white/10 p-2"
+              onClick={() => {
+                setShowSearch((prev) => !prev);
+                setSearchTerm("");
+              }}
+              aria-label="Search messages"
+            >
               <Search className="h-4 w-4" />
             </button>
             <div className="relative">
@@ -556,7 +583,7 @@ export default function CommunityDetailPage() {
                 <MoreVertical className="h-4 w-4" />
               </button>
               {showMenu ? (
-                <div className="absolute right-0 top-11 z-30 min-w-[160px] rounded-2xl border border-white/10 bg-[#0B0C12] p-2 text-sm text-white shadow-xl">
+                <div className="absolute right-0 top-11 z-30 min-w-40 rounded-2xl border border-white/10 bg-[#0B0C12] p-2 text-sm text-white shadow-xl">
                   <button
                     onClick={() => {
                       setShowMenu(false);
@@ -585,13 +612,27 @@ export default function CommunityDetailPage() {
               updateCurrentDateLabel();
             });
           }}
-          className="flex-1 space-y-4 rounded-[24px] border border-white/10 bg-[#0E1017] px-4 pb-4 pt-10 overflow-y-auto"
+          className={`relative flex-1 space-y-4 rounded-3xl border border-white/10 bg-[#0E1017] px-4 pb-4 ${showSearch ? "pt-16" : "pt-6"} overflow-y-auto`}
         >
-        <div className="sticky top-2 z-20 flex items-center justify-center -translate-y-6 pointer-events-none">
-          <span className="rounded-full border border-white/15 bg-[#0B0C12]/85 px-3 py-1 text-[11px] text-white/70 backdrop-blur">
-            {currentDateLabel || "Today"}
-          </span>
-        </div>
+          {showSearch ? (
+            <div className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 shadow-lg w-80">
+              <Search className="h-4 w-4 text-white/60" />
+              <input
+                ref={searchInputRef}
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search messages"
+                className="w-full bg-transparent text-sm text-white placeholder:text-white/40 focus:outline-none"
+              />
+            </div>
+          ) : null}
+          <div
+            className={`sticky ${showSearch ? "top-16" : "top-2"} z-20 flex items-center justify-center -translate-y-6 pointer-events-none`}
+          >
+            <span className="rounded-full border border-white/15 bg-[#0B0C12]/85 px-3 py-1 text-[11px] text-white/70 backdrop-blur">
+              {currentDateLabel || "Today"}
+            </span>
+          </div>
           {loadingMessages ? (
             Array.from({ length: 6 }).map((_, idx) => (
               <div key={`msg-skel-${idx}`} className="flex justify-start">
@@ -601,7 +642,7 @@ export default function CommunityDetailPage() {
           ) : (
             (() => {
               let lastLabel = "";
-              return messages.flatMap((msg) => {
+              return visibleMessages.flatMap((msg) => {
                 const label = getDateLabel(msg.createdAt);
                 const showLabel = label !== lastLabel;
                 lastLabel = label;
@@ -612,9 +653,9 @@ export default function CommunityDetailPage() {
                   msg.authorName === currentUserName;
                 const time = msg.createdAt
                   ? new Date(msg.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
                   : "";
                 return [
                   showLabel && label !== currentDateLabel ? (
@@ -635,11 +676,10 @@ export default function CommunityDetailPage() {
                     className={`flex ${isMine ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[78%] rounded-[20px] px-4 py-3 text-sm ${
-                        isMine
+                      className={`max-w-[78%] rounded-[20px] px-4 py-3 text-sm ${isMine
                           ? "bg-[#1F3A67] text-white"
                           : "bg-[#1B1C24] text-white/90"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between gap-3 text-[11px] text-white/50">
                         <span className="truncate">
@@ -708,7 +748,7 @@ export default function CommunityDetailPage() {
             </div>
 
             <div className="mt-6 flex flex-col items-center text-center">
-              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#4D7CFF] to-[#7C3AED] text-xl font-semibold text-white">
+              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-[#4D7CFF] to-[#7C3AED] text-xl font-semibold text-white">
                 {community?.avatarUrl ? (
                   <img
                     src={community.avatarUrl}
