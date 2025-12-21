@@ -59,23 +59,5 @@ export async function POST(req: Request) {
 
   const res = await db.collection("users").insertOne(userDoc);
 
-  await db.collection("doctors").insertOne({
-    id: res.insertedId.toString(),
-    name: parsed.data.fullName,
-    specialty: parsed.data.specialization,
-    category: parsed.data.specialization.toLowerCase(),
-    rating: 0,
-    description: "",
-    image: "",
-    emailLower,
-    passwordHash,
-    reviews: "",
-    cloudinaryId: null,
-    location: parsed.data.location ?? null,
-    pricePerMinute: 0,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
-
   return NextResponse.json({ ok: true, userId: String(res.insertedId) });
 }

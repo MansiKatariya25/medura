@@ -17,6 +17,7 @@ app.prepare().then(() => {
   });
 
   const userSockets = new Map();
+  const onlineUsers = new Set();
 
   const emitOnlineCount = async (roomId) => {
     const sockets = await io.in(roomId).allSockets();
@@ -40,6 +41,8 @@ app.prepare().then(() => {
       socket.data.role = role || null;
       if (userId) {
         userSockets.set(userId, socket.id);
+        onlineUsers.add(userId);
+        io.emit("presence:update", { userId, status: "online" });
       }
     });
 
@@ -96,6 +99,17 @@ app.prepare().then(() => {
       }
     });
 
+    socket.on("call:signal", ({ toUserId, roomName, signal }) => {
+      const target = toUserId ? userSockets.get(toUserId) : null;
+      if (target) {
+        io.to(target).emit("call:signal", {
+          roomName,
+          signal,
+          fromUserId: socket.data.userId || null,
+        });
+      }
+    });
+
     socket.on("call:decline", ({ toUserId, roomName }) => {
       const target = toUserId ? userSockets.get(toUserId) : null;
       if (target) {
@@ -122,7 +136,13 @@ app.prepare().then(() => {
       rooms.forEach((roomId) => emitOnlineCount(roomId));
       if (socket.data.userId) {
         userSockets.delete(socket.data.userId);
+        onlineUsers.delete(socket.data.userId);
+        io.emit("presence:update", { userId: socket.data.userId, status: "offline" });
       }
+    });
+
+    socket.on("presence:request", () => {
+      socket.emit("presence:online-list", { userIds: Array.from(onlineUsers) });
     });
   });
 
