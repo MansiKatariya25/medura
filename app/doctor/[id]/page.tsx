@@ -5,25 +5,96 @@ import { useRouter, useParams } from "next/navigation";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { io, type Socket } from "socket.io-client";
-import { doctors } from "@/data/doctors";
+import {
+  createLocalTracks,
+  Room,
+  RoomEvent,
+  Track,
+  type LocalTrack,
+} from "livekit-client";
 import { HeartPulse, X } from "lucide-react";
+import type { Doctor } from "@/types/doctor";
 
 export default function DoctorPage() {
   const router = useRouter();
   const params = useParams();
   const idRaw = params?.id;
   const id = Array.isArray(idRaw) ? idRaw[0] : idRaw;
-  const doctor = id ? doctors.find((d) => d.id === id) : undefined;
   const { data: session } = useSession();
+  const [doctor, setDoctor] = useState<Doctor | null>(null);
+  const [loadingDoctor, setLoadingDoctor] = useState(true);
+  const [availability, setAvailability] = useState<string[]>([]);
+  const [savingAvailability, setSavingAvailability] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [callState, setCallState] = useState<"idle" | "incoming" | "active">("idle");
   const [callRoom, setCallRoom] = useState<string | null>(null);
-  const [caller, setCaller] = useState<{ name?: string | null }>({});
+  const [caller, setCaller] = useState<{ id?: string | null; name?: string | null }>({});
   const socketRef = useRef<Socket | null>(null);
+  const roomRef = useRef<Room | null>(null);
+  const localTracksRef = useRef<LocalTrack[]>([]);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  if (!doctor) return <div className="p-6 text-white">Doctor not found</div>;
+  const isOwnDoctor =
+    !!id && session?.user?.id === id && (session.user as any).role === "doctor";
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!id) return;
+      setLoadingDoctor(true);
+      setLoadError(null);
+      try {
+        const res = await fetch(`/api/doctors/${id}`, { credentials: "include" });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || "Unable to load doctor");
+        }
+        if (!active) return;
+        setDoctor(data.doctor);
+        setAvailability(data.doctor?.availabilityDays || []);
+      } catch (err: any) {
+        if (!active) return;
+        setLoadError(err?.message || "Failed to load doctor");
+      } finally {
+        if (active) setLoadingDoctor(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.sessionStorage.getItem("medura:incoming-call");
+    if (!raw) return;
+    try {
+      const data = JSON.parse(raw) as {
+        roomName?: string;
+        callerId?: string | null;
+        callerName?: string | null;
+        accepted?: boolean;
+      };
+      if (!data?.roomName) return;
+      setCallRoom(data.roomName);
+      setCaller({ id: data.callerId || null, name: data.callerName || "Patient" });
+      if (data.accepted) {
+        setCallState("active");
+        connectLiveKit(data.roomName || "");
+      } else {
+        setCallState("incoming");
+      }
+      window.sessionStorage.removeItem("medura:incoming-call");
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const today = new Date();
   const week = useMemo(() =>
@@ -49,6 +120,7 @@ export default function DoctorPage() {
 
   const handleReserve = async () => {
     if (!selectedSlot) return setMessage("Please select a slot");
+    if (!doctor) return setMessage("Doctor unavailable");
     setIsSubmitting(true);
     setMessage(null);
     try {
@@ -96,14 +168,14 @@ export default function DoctorPage() {
     socket.on("connect", () => {
       socket.emit("identify-user", {
         userId: session?.user?.id || null,
-        userName: session?.user?.name || doctor.name,
+        userName: session?.user?.name || doctor?.name || "Doctor",
         role: session?.user ? (session.user as any).role || "doctor" : "doctor",
       });
     });
     socket.on("call:incoming", (payload: any) => {
       setCallState("incoming");
       setCallRoom(payload.roomName);
-      setCaller({ name: payload.callerName });
+      setCaller({ id: payload.callerId || null, name: payload.callerName });
     });
     socket.on("call:ended", () => {
       setCallState("idle");
@@ -115,40 +187,154 @@ export default function DoctorPage() {
       setCallRoom(null);
       setCaller({});
     });
-    socket.on("call:answered", () => {
-      setCallState("active");
-    });
     return () => {
       socket.disconnect();
     };
-  }, [session?.user?.id, session?.user?.name, doctor.name]);
+  }, [session?.user?.id, session?.user?.name, doctor?.name]);
+
+  useEffect(() => {
+    if (!socketRef.current?.connected) return;
+    if (!session?.user?.id) return;
+    socketRef.current.emit("identify-user", {
+      userId: session.user.id,
+      userName: session.user.name || doctor?.name || "Doctor",
+      role: (session.user as any)?.role || "doctor",
+    });
+  }, [session?.user?.id, session?.user?.name, doctor?.name]);
 
   const acceptCall = () => {
     if (!socketRef.current || !callRoom) return;
     socketRef.current.emit("call:answer", {
-      toUserId: null,
+      toUserId: caller?.id || null,
       roomName: callRoom,
     });
     setCallState("active");
+    connectLiveKit(callRoom);
   };
 
   const declineCall = () => {
     if (!socketRef.current || !callRoom) return;
     socketRef.current.emit("call:decline", {
-      toUserId: null,
+      toUserId: caller?.id || null,
       roomName: callRoom,
     });
-    setCallState("idle");
-    setCallRoom(null);
+    cleanupCall();
   };
 
   const endCall = () => {
     if (socketRef.current && callRoom) {
-      socketRef.current.emit("call:end", { toUserId: null, roomName: callRoom });
+      socketRef.current.emit("call:end", { toUserId: caller?.id || null, roomName: callRoom });
     }
+    cleanupCall();
+  };
+
+  const cleanupCall = () => {
+    if (roomRef.current) {
+      roomRef.current.disconnect();
+      roomRef.current = null;
+    }
+    if (localTracksRef.current.length) {
+      localTracksRef.current.forEach((track) => track.stop());
+      localTracksRef.current = [];
+    }
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     setCallState("idle");
     setCallRoom(null);
   };
+
+  const connectLiveKit = async (roomName: string) => {
+    try {
+      if (roomRef.current) return;
+      const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+      if (!wsUrl) throw new Error("LiveKit URL missing");
+      const tokenRes = await fetch("/api/livekit/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomName }),
+      });
+      const tokenJson = await tokenRes.json();
+      if (!tokenRes.ok) throw new Error(tokenJson?.error || "Token error");
+
+      const room = new Room({ adaptiveStream: true, dynacast: true });
+      roomRef.current = room;
+
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === Track.Kind.Video && remoteVideoRef.current) {
+          track.attach(remoteVideoRef.current);
+          remoteVideoRef.current.play().catch(() => undefined);
+        }
+        if (track.kind === Track.Kind.Audio && remoteAudioRef.current) {
+          track.attach(remoteAudioRef.current);
+          remoteAudioRef.current.play().catch(() => undefined);
+        }
+      });
+
+      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+        track.detach();
+      });
+
+      room.on(RoomEvent.Disconnected, () => {
+        cleanupCall();
+      });
+
+      await room.connect(wsUrl, tokenJson.token, { autoSubscribe: true });
+
+      const localTracks = await createLocalTracks({
+        audio: true,
+        video: true,
+      });
+      localTracksRef.current = localTracks;
+      for (const t of localTracks) {
+        await room.localParticipant.publishTrack(t);
+      }
+      const localVideo = localTracks.find((t) => t.kind === Track.Kind.Video);
+      if (localVideo && localVideoRef.current) {
+        localVideo.attach(localVideoRef.current);
+        localVideoRef.current.play().catch(() => undefined);
+      }
+    } catch {
+      cleanupCall();
+    }
+  };
+
+  const toggleDay = (day: string) => {
+    setAvailability((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day],
+    );
+  };
+
+  const saveAvailability = async () => {
+    if (!isOwnDoctor || !id) return;
+    setSavingAvailability(true);
+    try {
+      const res = await fetch(`/api/doctors/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ availabilityDays: availability }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Update failed");
+      setDoctor(data.doctor);
+    } catch (err: any) {
+      setMessage(err?.message || "Could not save availability");
+    } finally {
+      setSavingAvailability(false);
+    }
+  };
+
+  if (loadingDoctor) {
+    return <div className="p-6 text-white">Loading doctor...</div>;
+  }
+
+  if (!doctor) {
+    return (
+      <div className="p-6 text-white">
+        {loadError || "Doctor not found"}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -184,6 +370,66 @@ export default function DoctorPage() {
           <div className="mt-6 rounded-lg bg-[#0f1116] p-4">
             <h2 className="mb-2 text-sm font-semibold">About</h2>
             <p className="text-sm text-white/60">{doctor.description}</p>
+          </div>
+
+          <div className="mt-6 rounded-lg bg-[#0f1116] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Availability</h2>
+              {isOwnDoctor ? (
+                <button
+                  onClick={saveAvailability}
+                  disabled={savingAvailability}
+                  className="rounded-full bg-[#0b5cff] px-3 py-1 text-xs font-semibold text-white disabled:bg-white/20"
+                >
+                  {savingAvailability ? "Saving..." : "Save"}
+                </button>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => {
+                const active = availability.includes(day);
+                return (
+                  <button
+                    key={day}
+                    onClick={() => isOwnDoctor && toggleDay(day)}
+                    className={`rounded-full border px-3 py-2 text-xs font-semibold ${
+                      active
+                        ? "border-[#0b5cff] bg-[#0b5cff]/20 text-white"
+                        : "border-white/10 bg-transparent text-white/60"
+                    } ${isOwnDoctor ? "hover:border-[#0b5cff]" : ""}`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+            {!isOwnDoctor ? (
+              <p className="mt-2 text-xs text-white/50">
+                {availability.length === 0
+                  ? "Doctor has not set availability yet."
+                  : "Available on highlighted days."}
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-white/50">
+                Toggle the days you are available for video calls and appointments.
+              </p>
+            )}
+            {Array.isArray(doctor.availabilitySlots) && doctor.availabilitySlots.length > 0 ? (
+              <div className="mt-4 space-y-2 text-xs text-white/70">
+                {doctor.availabilitySlots.map((slot, idx) => (
+                  <div
+                    key={`${slot.day}-${slot.start}-${slot.end}-${idx}`}
+                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+                  >
+                    <span className="font-semibold text-white">{slot.day}</span>
+                    <span>
+                      {slot.start} - {slot.end}
+                      {slot.date ? ` • ${slot.date}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-6 rounded-lg bg-[#0f1116] p-4">
@@ -277,14 +523,24 @@ export default function DoctorPage() {
                 End
               </button>
             </div>
-            <div className="overflow-hidden rounded-xl border border-white/10">
-              <iframe
-                title="Call"
-                src={`https://meet.jit.si/${callRoom}`}
-                className="h-[420px] w-full bg-black"
-                allow="camera; microphone; fullscreen; display-capture"
+          <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className="h-[360px] w-full object-cover"
+            />
+            <div className="absolute bottom-4 right-4 h-28 w-40 overflow-hidden rounded-xl border border-white/20 bg-black">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="h-full w-full object-cover"
               />
             </div>
+            <audio ref={remoteAudioRef} autoPlay />
+          </div>
             <button
               onClick={() => setCallState("active")}
               className="absolute right-3 top-3 text-white/60 hover:text-white"

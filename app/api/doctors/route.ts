@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
-import type { Doctor } from "@/schemas/doctor";
+import type { Doctor } from "@/types/doctor";
 
 export const dynamic = "force-dynamic";
 
@@ -27,47 +27,51 @@ export async function GET(req: Request) {
     const db = client.db();
     const filter: Record<string, any> = {};
     if (category && category !== "all") {
-      filter.category = category;
+      filter.specialization = { $regex: `^${category}$`, $options: "i" };
     }
     if (query) {
       filter.$or = [
+        { fullName: { $regex: query, $options: "i" } },
         { name: { $regex: query, $options: "i" } },
-        { specialty: { $regex: query, $options: "i" } },
         { specialization: { $regex: query, $options: "i" } },
       ];
     }
 
     const docs = await db
-      .collection<Record<string, unknown>>("doctors")
-      .find(filter)
+      .collection<Record<string, unknown>>("users")
+      .find({ ...filter, role: "doctor" })
       .skip((page - 1) * limit)
       .limit(limit)
       .toArray();
 
     const doctors: Doctor[] = docs.map((doc) => {
-      const id =
-        toString(doc.id) ||
-        (doc._id ? String(doc._id) : "") ||
-        crypto.randomUUID();
+      const id = doc._id ? String(doc._id) : crypto.randomUUID();
       const name =
-        toString(doc.name) ||
         toString(doc.fullName) ||
+        toString(doc.name) ||
         toString(doc.doctorName) ||
         "Doctor";
-      const specialty =
-        toString(doc.specialty) ||
-        toString(doc.specialization) ||
-        "General";
+      const specialty = toString(doc.specialization) || toString(doc.specialty) || "General";
       const rating = toNumber(doc.rating, 4.2);
       const description =
         toString(doc.description) ||
         toString(doc.bio) ||
         "Experienced specialist available for consultation.";
-      const category = toString(doc.category) || specialty.toLowerCase();
+      const category = specialty.toLowerCase();
       const reviews = toString(doc.reviews);
       const image = toString(doc.image) || toString(doc.avatarUrl) || fallbackImage;
-      const cloudinaryId = toString(doc.cloudinaryId) || undefined;
       const pricePerMinute = toNumber(doc.pricePerMinute, 0);
+      const availabilityDays = Array.isArray(doc.availabilityDays)
+        ? (doc.availabilityDays as string[])
+        : undefined;
+      const availabilitySlots = Array.isArray(doc.availabilitySlots)
+        ? (doc.availabilitySlots as any[]).map((s) => ({
+            day: toString(s.day),
+            start: toString(s.start),
+            end: toString(s.end),
+            date: toString(s.date) || undefined,
+          }))
+        : undefined;
 
       return {
         id,
@@ -78,8 +82,9 @@ export async function GET(req: Request) {
         category,
         reviews: reviews || undefined,
         image,
-        cloudinaryId,
         pricePerMinute,
+        availabilityDays,
+        availabilitySlots,
       };
     });
 

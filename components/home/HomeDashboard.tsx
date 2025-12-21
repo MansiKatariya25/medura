@@ -18,6 +18,7 @@ import {
   Home,
   MapPin,
   Search,
+  Signal,
   Star,
   User,
   Users,
@@ -28,12 +29,18 @@ import {
   Trash,
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
+import {
+  createLocalTracks,
+  Room,
+  RoomEvent,
+  Track,
+  type LocalTrack,
+} from "livekit-client";
 
-import { doctors as seedDoctors } from "@/data/doctors";
 import MedKeyCard from "@/components/home/MedKeyCard";
 import { signOut } from "next-auth/react";
 import Button from "@/components/ui/Button";
-import type { Doctor } from "@/schemas/doctor";
+import type { Doctor } from "@/types/doctor";
 
 
 type IconComponent = ComponentType<{ className?: string }>;
@@ -104,16 +111,21 @@ function RoundedIconButton({
   className = "",
   children,
   onClick,
+  disabled = false,
 }: {
   className?: string;
   children: ReactNode;
   onClick?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      className={`flex h-10 w-10 items-center justify-center rounded-2xl bg-[#202331] text-white ${className}`}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={`flex h-10 w-10 items-center justify-center rounded-2xl bg-[#202331] text-white transition ${
+        disabled ? "cursor-not-allowed opacity-40" : "hover:bg-[#2a2f42]"
+      } ${className}`}
     >
       {children}
     </button>
@@ -156,6 +168,12 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [videoCallTimer, setVideoCallTimer] = useState(0);
   const videoCallIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const callStartRef = useRef<number | null>(null);
+  const [onlineDoctorIds, setOnlineDoctorIds] = useState<Set<string>>(new Set());
+  const roomRef = useRef<Room | null>(null);
+  const localTracksRef = useRef<LocalTrack[]>([]);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const formatSummary = (text?: string) => {
     if (!text) return null;
@@ -194,6 +212,15 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const countdownRef = useRef<number | null>(null);
   const readyTimeout = useRef<number | null>(null);
   const router = useRouter();
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [availabilityDay, setAvailabilityDay] = useState<string>(() => {
+    const dayIdx = new Date().getDay();
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dayIdx];
+  });
+  const [availabilityStart, setAvailabilityStart] = useState("09:00");
+  const [availabilityEnd, setAvailabilityEnd] = useState("17:00");
+  const [savingAvailability, setSavingAvailability] = useState(false);
+  const [availabilityMsg, setAvailabilityMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -268,7 +295,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       }
     } catch {
       if (!append) {
-        setDoctorList(seedDoctors);
+        setDoctorList([]);
       }
     } finally {
       loadingMoreRef.current = false;
@@ -406,6 +433,34 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const heroDoctors = visibleDoctors.slice(0, 4);
   const featuredDoctor = visibleDoctors[0];
   const listDoctors = visibleDoctors.slice(4);
+  const sessionRole = (session?.user as any)?.role;
+  const [userRole, setUserRole] = useState<string | null>(
+    sessionRole ? String(sessionRole).toLowerCase() : null,
+  );
+  const [doctorUserId, setDoctorUserId] = useState<string | null>(
+    (session?.user?.id as string | undefined) ?? null,
+  );
+  useEffect(() => {
+    if (sessionRole) setUserRole(String(sessionRole).toLowerCase());
+    if (session?.user?.id) setDoctorUserId(session.user.id as string);
+
+    // fallback: fetch profile once to infer role/id for doctors
+    if (!sessionRole || !doctorUserId) {
+      fetch("/api/profile")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.profile?.role) {
+            setUserRole(String(data.profile.role).toLowerCase());
+          }
+          if (data?.profile?._id) {
+            setDoctorUserId(String(data.profile._id));
+          }
+        })
+        .catch(() => undefined);
+    }
+  }, [sessionRole, doctorUserId, session?.user?.id]);
+  const isDoctor = userRole === "doctor";
+  const doctorId = isDoctor ? doctorUserId : null;
 
   const renderHomeSections = () => (
     <>
@@ -573,12 +628,20 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                   <Star className="h-3.5 w-3.5 fill-[#F9D655] text-[#F9D655]" />
                   {doctor.rating.toFixed(1)}
                 </div>
+                <div className="absolute right-3 top-3 flex items-center rounded-full bg-black/50 p-1.5">
+                  <Signal
+                    className={`h-3.5 w-3.5 ${onlineDoctorIds.has(doctor.id) ? "text-emerald-400" : "text-white/50"}`}
+                  />
+                </div>
               </div>
               <div className="mt-4">
                 <p className="text-sm font-semibold text-white">{doctor.name}</p>
                 <p className="text-xs text-white/50">{doctor.specialty}</p>
                 <div className="mt-3 flex gap-2">
-                  <RoundedIconButton>
+                  <RoundedIconButton
+                    onClick={() => handleStartCall(doctor)}
+                    disabled={!onlineDoctorIds.has(doctor.id)}
+                  >
                     <Video className="h-5 w-5" />
                   </RoundedIconButton>
                   <RoundedIconButton onClick={() => router.push(`/doctor/${doctor.id}`)}>
@@ -649,6 +712,13 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 <p className="text-sm text-white/60">
                   {featuredDoctor?.specialty ?? "Specialist"}
                 </p>
+                {featuredDoctor ? (
+                  <div className="mt-1 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/70">
+                    <Signal
+                      className={`h-3 w-3 ${onlineDoctorIds.has(featuredDoctor.id) ? "text-emerald-400" : "text-white/50"}`}
+                    />
+                  </div>
+                ) : null}
                 <div className="mt-2 flex items-center gap-1 text-sm text-white/70">
                   <Star className="h-4 w-4 fill-[#F9D655] text-[#F9D655]" />
                   {featuredDoctor?.rating ?? 0}
@@ -674,6 +744,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               <RoundedIconButton
                 className="w-12 flex-none border border-white/15 bg-transparent"
                 onClick={() => featuredDoctor && handleStartCall(featuredDoctor as Doctor)}
+                disabled={featuredDoctor ? !onlineDoctorIds.has(featuredDoctor.id) : true}
               >
                 <Video className="h-5 w-5" />
               </RoundedIconButton>
@@ -681,6 +752,24 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           </div>
 
           <div className="flex-1 space-y-4 rounded-[36px] bg-[#11121A] p-4">
+            {isDoctor ? (
+              <div className="rounded-2xl border border-white/10 bg-[#15161E] p-4 text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">Your availability</p>
+                    <p className="text-xs text-white/60">
+                      Set day/time for today and future dates.
+                    </p>
+                  </div>
+                  <Button onClick={() => setShowAvailabilityModal(true)}>
+                    Set availability
+                  </Button>
+                </div>
+                {availabilityMsg ? (
+                  <p className="mt-2 text-xs text-white/60">{availabilityMsg}</p>
+                ) : null}
+              </div>
+            ) : null}
             {listDoctors.map((doctor) => (
               <div
                 key={doctor.id}
@@ -700,6 +789,11 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                     {doctor.name}
                   </p>
                   <p className="text-sm text-white/60">{doctor.specialty}</p>
+                  <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-white/60">
+                    <Signal
+                      className={`h-3 w-3 ${onlineDoctorIds.has(doctor.id) ? "text-emerald-400" : "text-white/50"}`}
+                    />
+                  </div>
                   <p className="text-xs text-white/50">
                     ₹{(doctor as any).pricePerMinute || 0}/min
                   </p>
@@ -717,7 +811,10 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                     >
                       Book Now
                     </button>
-                    <RoundedIconButton onClick={() => handleStartCall(doctor)}>
+                    <RoundedIconButton
+                      onClick={() => handleStartCall(doctor)}
+                      disabled={!onlineDoctorIds.has(doctor.id)}
+                    >
                       <Video className="h-4 w-4" />
                     </RoundedIconButton>
                   </div>
@@ -802,10 +899,27 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       setVideoCallRoom(payload.roomName);
       setCallPartner({ id: payload.callerId, name: payload.callerName, price: payload.pricePerMinute });
     });
+    socket.on("presence:online-list", (payload: any) => {
+      const ids = Array.isArray(payload?.userIds) ? payload.userIds.map(String) : [];
+      setOnlineDoctorIds(new Set(ids));
+    });
+    socket.on("presence:update", (payload: any) => {
+      const userId = payload?.userId ? String(payload.userId) : null;
+      if (!userId) return;
+      setOnlineDoctorIds((prev) => {
+        const next = new Set(prev);
+        if (payload.status === "online") next.add(userId);
+        if (payload.status === "offline") next.delete(userId);
+        return next;
+      });
+    });
     socket.on("call:answered", (payload: any) => {
       if (payload.roomName === videoCallRoom) {
         setVideoCallState("active");
         startCallTimer();
+        if (videoCallRoom) {
+          connectLiveKit(videoCallRoom);
+        }
       }
     });
     socket.on("call:declined", (payload: any) => {
@@ -818,12 +932,23 @@ export default function HomeDashboard({ userName }: { userName: string }) {
         resetCall();
       }
     });
+    socket.emit("presence:request");
     return () => {
       if (videoCallIntervalRef.current) clearInterval(videoCallIntervalRef.current);
       socket.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, userName]);
+
+  useEffect(() => {
+    if (!socketRef.current?.connected) return;
+    if (!session?.user?.id) return;
+    socketRef.current.emit("identify-user", {
+      userId: session.user.id,
+      userName: session.user.name || userName || "User",
+      role: (session.user as any)?.role || null,
+    });
+  }, [session?.user?.id, session?.user?.name, userName]);
 
   const handleUploadDocument = async (file: File) => {
     setDocError(null);
@@ -908,6 +1033,23 @@ export default function HomeDashboard({ userName }: { userName: string }) {
 
   const resetCall = () => {
     if (videoCallIntervalRef.current) clearInterval(videoCallIntervalRef.current);
+    if (roomRef.current) {
+      roomRef.current.disconnect();
+      roomRef.current = null;
+    }
+    if (localTracksRef.current.length) {
+      localTracksRef.current.forEach((track) => track.stop());
+      localTracksRef.current = [];
+    }
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
+    }
     setVideoCallTimer(0);
     setVideoCallRoom(null);
     setCallPartner({});
@@ -952,6 +1094,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     });
     setVideoCallState("active");
     startCallTimer();
+    connectLiveKit(videoCallRoom);
   };
 
   const handleDeclineCall = () => {
@@ -987,6 +1130,104 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       });
     }
     resetCall();
+  };
+
+  const connectLiveKit = async (roomName: string) => {
+    try {
+      if (roomRef.current) return;
+      const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+      if (!wsUrl) throw new Error("LiveKit URL missing");
+      const tokenRes = await fetch("/api/livekit/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomName }),
+      });
+      const tokenJson = await tokenRes.json();
+      if (!tokenRes.ok) throw new Error(tokenJson?.error || "Token error");
+      const tokenStrRaw =
+        typeof tokenJson?.token === "string"
+          ? tokenJson.token
+          : typeof tokenJson?.token?.token === "string"
+            ? tokenJson.token.token
+            : tokenJson?.token ?? tokenJson;
+      const tokenStr = typeof tokenStrRaw === "string" ? tokenStrRaw : String(tokenStrRaw || "");
+      if (!tokenStr || tokenStr === "[object Object]") throw new Error("Invalid token");
+
+      const room = new Room({ adaptiveStream: true, dynacast: true });
+      roomRef.current = room;
+
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === Track.Kind.Video && remoteVideoRef.current) {
+          track.attach(remoteVideoRef.current);
+          remoteVideoRef.current.play().catch(() => undefined);
+        }
+        if (track.kind === Track.Kind.Audio && remoteAudioRef.current) {
+          track.attach(remoteAudioRef.current);
+          remoteAudioRef.current.play().catch(() => undefined);
+        }
+      });
+
+      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+        track.detach();
+      });
+
+      room.on(RoomEvent.Disconnected, () => {
+        resetCall();
+      });
+
+      await room.connect(wsUrl, tokenStr, { autoSubscribe: true });
+
+      const localTracks = await createLocalTracks({
+        audio: true,
+        video: true,
+      });
+      localTracksRef.current = localTracks;
+      for (const t of localTracks) {
+        await room.localParticipant.publishTrack(t);
+      }
+      const localVideo = localTracks.find((t) => t.kind === Track.Kind.Video);
+      if (localVideo && localVideoRef.current) {
+        localVideo.attach(localVideoRef.current);
+        localVideoRef.current.play().catch(() => undefined);
+      }
+    } catch {
+      setVideoCallState("idle");
+    }
+  };
+
+  const saveAvailability = async () => {
+    const doctorProfileId = session?.user?.id ?? doctorUserId ?? null;
+    if (!doctorProfileId) {
+      setAvailabilityMsg("Doctor id is missing. Please reload and try again.");
+      return;
+    }
+    setSavingAvailability(true);
+    setAvailabilityMsg(null);
+    try {
+      const res = await fetch(`/api/doctors/${doctorProfileId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          availabilityDays: [availabilityDay],
+          availabilitySlots: [
+            {
+              day: availabilityDay,
+              start: availabilityStart,
+              end: availabilityEnd,
+              date: new Date().toISOString().slice(0, 10),
+            },
+          ],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Save failed");
+      setAvailabilityMsg("Availability saved");
+      setShowAvailabilityModal(false);
+    } catch (err: any) {
+      setAvailabilityMsg(err?.message || "Could not save availability");
+    } finally {
+      setSavingAvailability(false);
+    }
   };
 
   const renderTabContent = (tab: string) => {
@@ -1240,6 +1481,80 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       </div>
 
       {/* Call modals */}
+      {showAvailabilityModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md space-y-4 rounded-2xl bg-[#0f1116] p-5 text-white">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Set availability</h3>
+              <button
+                onClick={() => setShowAvailabilityModal(false)}
+                className="rounded-full bg-white/10 p-2 text-white/70 hover:text-white"
+                aria-label="Close availability"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs text-white/60">Day</p>
+                <select
+                  value={availabilityDay}
+                  onChange={(e) => setAvailabilityDay(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+                >
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                    <option key={d} value={d} className="bg-[#0f1116]">
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-xs text-white/60">Start time</p>
+                  <input
+                    type="time"
+                    value={availabilityStart}
+                    onChange={(e) => setAvailabilityStart(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+                  />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-white/60">End time</p>
+                  <input
+                    type="time"
+                    value={availabilityEnd}
+                    onChange={(e) => setAvailabilityEnd(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-white/50">
+                Today: {new Date().toLocaleDateString()} — applies to this day and future dates you choose.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowAvailabilityModal(false)}
+                className="flex-1 rounded-full border border-white/15 bg-white/5 py-2 text-sm text-white hover:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveAvailability}
+                disabled={savingAvailability}
+                className="flex-1 rounded-full bg-[#4D7CFF] py-2 text-sm font-semibold text-white disabled:bg-white/20"
+              >
+                {savingAvailability ? "Saving..." : "Save"}
+              </button>
+            </div>
+            {availabilityMsg ? (
+              <p className="text-xs text-white/70">{availabilityMsg}</p>
+            ) : null}
+          </div>
+        </div>
+      )}
+
       {videoCallState === "incoming" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-sm rounded-2xl bg-[#0f1116] p-5 text-white">
@@ -1290,13 +1605,23 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 End
               </button>
             </div>
-            <div className="overflow-hidden rounded-xl border border-white/10">
-              <iframe
-                title="Call"
-                src={`https://meet.jit.si/${videoCallRoom}`}
-                className="h-[420px] w-full bg-black"
-                allow="camera; microphone; fullscreen; display-capture"
+            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="h-[360px] w-full object-cover"
               />
+              <div className="absolute bottom-4 right-4 h-28 w-40 overflow-hidden rounded-xl border border-white/20 bg-black">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <audio ref={remoteAudioRef} autoPlay />
             </div>
           </div>
         </div>

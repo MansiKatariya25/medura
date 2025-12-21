@@ -38,7 +38,7 @@ export function useRealtimeVoice(active: boolean) {
 
   const startAnalysis = useCallback((stream: MediaStream) => {
     try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
       audioContextRef.current = new AudioCtx();
       const analyser = audioContextRef.current.createAnalyser();

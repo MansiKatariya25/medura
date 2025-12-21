@@ -16,8 +16,8 @@ export async function GET() {
     const client = await clientPromise;
     const db = client.db();
     const rawCategories = await db
-      .collection<Record<string, unknown>>("doctors")
-      .distinct("category");
+      .collection<Record<string, unknown>>("users")
+      .distinct("specialization", { role: "doctor" });
 
     const categories = (rawCategories || [])
       .filter((value): value is string => typeof value === "string" && !!value.trim())

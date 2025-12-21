@@ -49,10 +49,6 @@ export async function POST(req: Request) {
     doctorFilter,
     { $inc: { earnings: amount }, $set: { updatedAt: new Date() } },
   );
-  await db.collection("doctors").updateOne(
-    { id: doctorId },
-    { $inc: { earnings: amount }, $set: { updatedAt: new Date() } },
-  );
 
   await db.collection("calls").insertOne({
     patientId: session.user.id,
