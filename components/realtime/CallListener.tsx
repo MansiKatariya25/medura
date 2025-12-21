@@ -4,13 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { io, type Socket } from "socket.io-client";
-import {
-  createLocalTracks,
-  Room,
-  RoomEvent,
-  Track,
-  type LocalTrack,
-} from "livekit-client";
+// Dynamically import Zego inside connect to avoid SSR issues
 import { PhoneCall, PhoneOff, X } from "lucide-react";
 
 type IncomingCall = {
@@ -30,11 +24,8 @@ export default function CallListener() {
     session?.user ? ((session.user as any)?.role as string) ?? null : null,
   );
   const [callActive, setCallActive] = useState(false);
-  const roomRef = useRef<Room | null>(null);
-  const localTracksRef = useRef<LocalTrack[]>([]);
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const zegoInstanceRef = useRef<any>(null);
+  const zegoContainerRef = useRef<HTMLDivElement | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -154,17 +145,13 @@ export default function CallListener() {
   };
 
   const cleanupCall = () => {
-    if (roomRef.current) {
-      roomRef.current.disconnect();
-      roomRef.current = null;
+    if (zegoInstanceRef.current) {
+      zegoInstanceRef.current.destroy();
+      zegoInstanceRef.current = null;
     }
-    if (localTracksRef.current.length) {
-      localTracksRef.current.forEach((track) => track.stop());
-      localTracksRef.current = [];
+    if (zegoContainerRef.current) {
+      zegoContainerRef.current.innerHTML = "";
     }
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     setCallActive(false);
     setIncoming(null);
   };
@@ -172,62 +159,32 @@ export default function CallListener() {
   const connectLiveKit = async (roomName: string) => {
     try {
       setCallError(null);
-      if (roomRef.current) return;
-      const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
-      if (!wsUrl) throw new Error("LiveKit URL missing");
-      const tokenRes = await fetch("/api/livekit/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomName }),
+      if (!zegoContainerRef.current) return;
+      const { ZegoUIKitPrebuilt } = await import("@zegocloud/zego-uikit-prebuilt");
+      const appId = Number(process.env.NEXT_PUBLIC_ZEGO_APP_ID || process.env.ZEGO_APP_ID);
+      const serverSecret = process.env.ZEGO_SERVER_SECRET;
+      if (!appId || !serverSecret) throw new Error("Zego not configured");
+      const userId = (session?.user?.id as string) || `user-${Date.now()}`;
+      const userName = session?.user?.name || "Doctor";
+      const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+        appId,
+        serverSecret,
+        roomName,
+        userId,
+        userName,
+      );
+      const zp = ZegoUIKitPrebuilt.create(kitToken);
+      zegoInstanceRef.current = zp;
+      zp.joinRoom({
+        container: zegoContainerRef.current,
+        sharedLinks: [],
+        showPreJoinView: false,
+        turnOnCameraWhenJoining: true,
+        turnOnMicrophoneWhenJoining: true,
+        showLeavingView: false,
+        scenario: { mode: ZegoUIKitPrebuilt.OneONoneCall },
+        onLeaveRoom: () => cleanupCall(),
       });
-      const tokenJson = await tokenRes.json();
-      if (!tokenRes.ok) throw new Error(tokenJson?.error || "Token error");
-      const tokenStrRaw =
-        typeof tokenJson?.token === "string"
-          ? tokenJson.token
-          : typeof tokenJson?.token?.token === "string"
-            ? tokenJson.token.token
-            : tokenJson?.token ?? tokenJson;
-      const tokenStr = typeof tokenStrRaw === "string" ? tokenStrRaw : String(tokenStrRaw || "");
-      if (!tokenStr || tokenStr === "[object Object]") throw new Error("Invalid token");
-
-      const room = new Room({ adaptiveStream: true, dynacast: true });
-      roomRef.current = room;
-
-      room.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === Track.Kind.Video && remoteVideoRef.current) {
-          track.attach(remoteVideoRef.current);
-          remoteVideoRef.current.play().catch(() => undefined);
-        }
-        if (track.kind === Track.Kind.Audio && remoteAudioRef.current) {
-          track.attach(remoteAudioRef.current);
-          remoteAudioRef.current.play().catch(() => undefined);
-        }
-      });
-
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
-        track.detach();
-      });
-
-      room.on(RoomEvent.Disconnected, () => {
-        cleanupCall();
-      });
-
-      await room.connect(wsUrl, tokenStr, { autoSubscribe: true });
-
-      const localTracks = await createLocalTracks({
-        audio: true,
-        video: true,
-      });
-      localTracksRef.current = localTracks;
-      for (const t of localTracks) {
-        await room.localParticipant.publishTrack(t);
-      }
-      const localVideo = localTracks.find((t) => t.kind === Track.Kind.Video);
-      if (localVideo && localVideoRef.current) {
-        localVideo.attach(localVideoRef.current);
-        localVideoRef.current.play().catch(() => undefined);
-      }
     } catch (err: any) {
       const msg = err?.message || "Unable to connect call";
       setCallError(msg);
@@ -286,23 +243,11 @@ export default function CallListener() {
             <p className="mt-2 text-xs text-red-400">{callError}</p>
           ) : null}
           <div className="relative mt-3 overflow-hidden rounded-xl border border-white/10 bg-black">
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="h-[360px] w-full object-cover"
+            <div
+              ref={zegoContainerRef}
+              className="relative h-[420px] w-full overflow-hidden rounded-xl bg-black"
             />
-            <div className="absolute bottom-4 right-4 h-28 w-40 overflow-hidden rounded-xl border border-white/20 bg-black">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                muted
-                playsInline
-                className="h-full w-full object-cover"
-              />
-            </div>
           </div>
-          <audio ref={remoteAudioRef} autoPlay />
           <button
             onClick={endCall}
             className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white/70 hover:text-white"

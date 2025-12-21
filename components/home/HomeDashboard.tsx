@@ -29,13 +29,6 @@ import {
   Trash,
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
-import {
-  createLocalTracks,
-  Room,
-  RoomEvent,
-  Track,
-  type LocalTrack,
-} from "livekit-client";
 
 import MedKeyCard from "@/components/home/MedKeyCard";
 import { signOut } from "next-auth/react";
@@ -177,11 +170,8 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const videoCallIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const callStartRef = useRef<number | null>(null);
   const [onlineDoctorIds, setOnlineDoctorIds] = useState<Set<string>>(new Set());
-  const roomRef = useRef<Room | null>(null);
-  const localTracksRef = useRef<LocalTrack[]>([]);
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const zegoInstanceRef = useRef<any>(null);
+  const zegoContainerRef = useRef<HTMLDivElement | null>(null);
 
   const formatSummary = (text?: string) => {
     if (!text) return null;
@@ -1077,22 +1067,12 @@ export default function HomeDashboard({ userName }: { userName: string }) {
 
   const resetCall = () => {
     if (videoCallIntervalRef.current) clearInterval(videoCallIntervalRef.current);
-    if (roomRef.current) {
-      roomRef.current.disconnect();
-      roomRef.current = null;
+    if (zegoInstanceRef.current) {
+      zegoInstanceRef.current.destroy();
+      zegoInstanceRef.current = null;
     }
-    if (localTracksRef.current.length) {
-      localTracksRef.current.forEach((track) => track.stop());
-      localTracksRef.current = [];
-    }
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
-    }
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null;
-    }
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = null;
+    if (zegoContainerRef.current) {
+      zegoContainerRef.current.innerHTML = "";
     }
     setVideoCallTimer(0);
     setVideoCallRoom(null);
@@ -1178,62 +1158,36 @@ export default function HomeDashboard({ userName }: { userName: string }) {
 
   const connectLiveKit = async (roomName: string) => {
     try {
-      if (roomRef.current) return;
-      const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
-      if (!wsUrl) throw new Error("LiveKit URL missing");
-      const tokenRes = await fetch("/api/livekit/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomName }),
+      if (!zegoContainerRef.current) return;
+      const { ZegoUIKitPrebuilt } = await import("@zegocloud/zego-uikit-prebuilt");
+      const appId = Number(process.env.NEXT_PUBLIC_ZEGO_APP_ID || process.env.ZEGO_APP_ID);
+      const serverSecret = process.env.ZEGO_SERVER_SECRET;
+      if (!appId || !serverSecret) throw new Error("Zego not configured");
+      const userId = (session?.user?.id as string) || `user-${Date.now()}`;
+      const userName = session?.user?.name || "User";
+      const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+        appId,
+        serverSecret,
+        roomName,
+        userId,
+        userName,
+      );
+      const zp = ZegoUIKitPrebuilt.create(kitToken);
+      zegoInstanceRef.current = zp;
+      zp.joinRoom({
+        container: zegoContainerRef.current,
+        sharedLinks: [],
+        showPreJoinView: false,
+        turnOnCameraWhenJoining: true,
+        turnOnMicrophoneWhenJoining: true,
+        showLeavingView: false,
+        scenario: {
+          mode: ZegoUIKitPrebuilt.OneONoneCall,
+        },
+        onLeaveRoom: () => {
+          resetCall();
+        },
       });
-      const tokenJson = await tokenRes.json();
-      if (!tokenRes.ok) throw new Error(tokenJson?.error || "Token error");
-      const tokenStrRaw =
-        typeof tokenJson?.token === "string"
-          ? tokenJson.token
-          : typeof tokenJson?.token?.token === "string"
-            ? tokenJson.token.token
-            : tokenJson?.token ?? tokenJson;
-      const tokenStr = typeof tokenStrRaw === "string" ? tokenStrRaw : String(tokenStrRaw || "");
-      if (!tokenStr || tokenStr === "[object Object]") throw new Error("Invalid token");
-
-      const room = new Room({ adaptiveStream: true, dynacast: true });
-      roomRef.current = room;
-
-      room.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === Track.Kind.Video && remoteVideoRef.current) {
-          track.attach(remoteVideoRef.current);
-          remoteVideoRef.current.play().catch(() => undefined);
-        }
-        if (track.kind === Track.Kind.Audio && remoteAudioRef.current) {
-          track.attach(remoteAudioRef.current);
-          remoteAudioRef.current.play().catch(() => undefined);
-        }
-      });
-
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
-        track.detach();
-      });
-
-      room.on(RoomEvent.Disconnected, () => {
-        resetCall();
-      });
-
-      await room.connect(wsUrl, tokenStr, { autoSubscribe: true });
-
-      const localTracks = await createLocalTracks({
-        audio: true,
-        video: true,
-      });
-      localTracksRef.current = localTracks;
-      for (const t of localTracks) {
-        await room.localParticipant.publishTrack(t);
-      }
-      const localVideo = localTracks.find((t) => t.kind === Track.Kind.Video);
-      if (localVideo && localVideoRef.current) {
-        localVideo.attach(localVideoRef.current);
-        localVideoRef.current.play().catch(() => undefined);
-      }
     } catch {
       setVideoCallState("idle");
     }
@@ -1650,22 +1604,10 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               </button>
             </div>
             <div className="overflow-hidden rounded-xl border border-white/10">
-              <iframe
-                title="Call"
-                src={`https://meet.jit.si/${videoCallRoom}`}
-                className="h-105 w-full bg-black"
-                allow="camera; microphone; fullscreen; display-capture"
+              <div
+                ref={zegoContainerRef}
+                className="relative h-105 w-full overflow-hidden rounded-xl bg-black"
               />
-              <div className="absolute bottom-4 right-4 h-28 w-40 overflow-hidden rounded-xl border border-white/20 bg-black">
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <audio ref={remoteAudioRef} autoPlay />
             </div>
           </div>
         </div>

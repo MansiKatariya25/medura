@@ -5,13 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { io, type Socket } from "socket.io-client";
-import {
-  createLocalTracks,
-  Room,
-  RoomEvent,
-  Track,
-  type LocalTrack,
-} from "livekit-client";
+// Dynamically import inside functions to avoid SSR issues
 import { HeartPulse, X } from "lucide-react";
 import type { Doctor } from "@/types/doctor";
 
@@ -33,11 +27,8 @@ export default function DoctorPage() {
   const [callRoom, setCallRoom] = useState<string | null>(null);
   const [caller, setCaller] = useState<{ id?: string | null; name?: string | null }>({});
   const socketRef = useRef<Socket | null>(null);
-  const roomRef = useRef<Room | null>(null);
-  const localTracksRef = useRef<LocalTrack[]>([]);
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const zegoInstanceRef = useRef<any>(null);
+  const zegoContainerRef = useRef<HTMLDivElement | null>(null);
 
   const isOwnDoctor =
     !!id && session?.user?.id === id && (session.user as any).role === "doctor";
@@ -229,71 +220,45 @@ export default function DoctorPage() {
   };
 
   const cleanupCall = () => {
-    if (roomRef.current) {
-      roomRef.current.disconnect();
-      roomRef.current = null;
+    if (zegoInstanceRef.current) {
+      zegoInstanceRef.current.destroy();
+      zegoInstanceRef.current = null;
     }
-    if (localTracksRef.current.length) {
-      localTracksRef.current.forEach((track) => track.stop());
-      localTracksRef.current = [];
+    if (zegoContainerRef.current) {
+      zegoContainerRef.current.innerHTML = "";
     }
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     setCallState("idle");
     setCallRoom(null);
   };
 
   const connectLiveKit = async (roomName: string) => {
     try {
-      if (roomRef.current) return;
-      const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
-      if (!wsUrl) throw new Error("LiveKit URL missing");
-      const tokenRes = await fetch("/api/livekit/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomName }),
+      if (!zegoContainerRef.current) return;
+      const { ZegoUIKitPrebuilt } = await import("@zegocloud/zego-uikit-prebuilt");
+      const appId = Number(process.env.NEXT_PUBLIC_ZEGO_APP_ID || process.env.ZEGO_APP_ID);
+      const serverSecret = process.env.ZEGO_SERVER_SECRET;
+      if (!appId || !serverSecret) throw new Error("Zego not configured");
+      const userId = (session?.user?.id as string) || `user-${Date.now()}`;
+      const userName = session?.user?.name || "Doctor";
+      const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+        appId,
+        serverSecret,
+        roomName,
+        userId,
+        userName,
+      );
+      const zp = ZegoUIKitPrebuilt.create(kitToken);
+      zegoInstanceRef.current = zp;
+      zp.joinRoom({
+        container: zegoContainerRef.current,
+        sharedLinks: [],
+        showPreJoinView: false,
+        turnOnCameraWhenJoining: true,
+        turnOnMicrophoneWhenJoining: true,
+        showLeavingView: false,
+        scenario: { mode: ZegoUIKitPrebuilt.OneONoneCall },
+        onLeaveRoom: () => cleanupCall(),
       });
-      const tokenJson = await tokenRes.json();
-      if (!tokenRes.ok) throw new Error(tokenJson?.error || "Token error");
-
-      const room = new Room({ adaptiveStream: true, dynacast: true });
-      roomRef.current = room;
-
-      room.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === Track.Kind.Video && remoteVideoRef.current) {
-          track.attach(remoteVideoRef.current);
-          remoteVideoRef.current.play().catch(() => undefined);
-        }
-        if (track.kind === Track.Kind.Audio && remoteAudioRef.current) {
-          track.attach(remoteAudioRef.current);
-          remoteAudioRef.current.play().catch(() => undefined);
-        }
-      });
-
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
-        track.detach();
-      });
-
-      room.on(RoomEvent.Disconnected, () => {
-        cleanupCall();
-      });
-
-      await room.connect(wsUrl, tokenJson.token, { autoSubscribe: true });
-
-      const localTracks = await createLocalTracks({
-        audio: true,
-        video: true,
-      });
-      localTracksRef.current = localTracks;
-      for (const t of localTracks) {
-        await room.localParticipant.publishTrack(t);
-      }
-      const localVideo = localTracks.find((t) => t.kind === Track.Kind.Video);
-      if (localVideo && localVideoRef.current) {
-        localVideo.attach(localVideoRef.current);
-        localVideoRef.current.play().catch(() => undefined);
-      }
     } catch {
       cleanupCall();
     }
@@ -523,24 +488,12 @@ export default function DoctorPage() {
                 End
               </button>
             </div>
-          <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="h-[360px] w-full object-cover"
-            />
-            <div className="absolute bottom-4 right-4 h-28 w-40 overflow-hidden rounded-xl border border-white/20 bg-black">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                muted
-                playsInline
-                className="h-full w-full object-cover"
+            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
+              <div
+                ref={zegoContainerRef}
+                className="relative h-[420px] w-full overflow-hidden rounded-xl bg-black"
               />
             </div>
-            <audio ref={remoteAudioRef} autoPlay />
-          </div>
             <button
               onClick={() => setCallState("active")}
               className="absolute right-3 top-3 text-white/60 hover:text-white"
