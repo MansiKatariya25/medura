@@ -10,7 +10,7 @@ const ambulanceSchema = z.object({
   riderName: z.string().min(2).max(80),
   email: z.string().email().optional(),
   password: z.string().min(8).max(72).optional(),
-  location: z.string().optional(),
+  location: z.string().optional().nullable(),
 });
 
 export async function POST(req: Request) {

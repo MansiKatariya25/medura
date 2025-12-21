@@ -10,12 +10,12 @@ export default function Navbar() {
 
   return (
     <motion.header
-      initial={{ y: -100, opacity: 0 }}
+      initial={{ y: -40, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.5, ease: "easeInOut" }}
+      transition={{ duration: 0.45, ease: "easeOut" }}
       className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center px-4 pt-4"
     >
-      <div className="flex w-full max-w-5xl items-center justify-between rounded-2xl border border-white/10 bg-black/40 px-6 py-3 backdrop-blur-xl supports-[backdrop-filter]:bg-black/20">
+      <div className="flex w-full max-w-6xl items-center justify-between rounded-2xl border border-white/10 bg-[#0B0C12]/85 px-5 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.4)] backdrop-blur">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
           <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600/20 text-blue-500">
@@ -50,12 +50,12 @@ export default function Navbar() {
           </Link>
           <Link
             href="/auth/patient"
-            className="group relative overflow-hidden rounded-full bg-linear-to-r from-blue-600 to-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:shadow-blue-500/50"
+            className="group relative overflow-hidden rounded-full bg-linear-to-r from-[#2D7BE8] via-[#4D7CFF] to-[#2D7BE8] px-5 py-2 text-sm font-semibold text-white shadow-[0_12px_25px_rgba(77,124,255,0.35)] transition hover:shadow-[0_16px_35px_rgba(77,124,255,0.45)]"
           >
             <span className="relative z-10 flex items-center gap-2">
               Get Started
             </span>
-            <div className="absolute inset-0 -z-0 translate-y-full bg-linear-to-r from-indigo-600 to-blue-600 transition-transform duration-300 group-hover:translate-y-0" />
+            <div className="absolute inset-0 -z-0 translate-y-full bg-linear-to-r from-[#1F3A67] to-[#4D7CFF] transition-transform duration-300 group-hover:translate-y-0" />
           </Link>
         </div>
 
@@ -72,10 +72,10 @@ export default function Navbar() {
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            initial={{ opacity: 0, y: -14, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="absolute top-20 left-4 right-4 z-40 rounded-2xl border border-white/10 bg-[#091E42]/95 p-6 shadow-2xl backdrop-blur-3xl md:hidden"
+            exit={{ opacity: 0, y: -14, scale: 0.98 }}
+            className="absolute top-20 left-4 right-4 z-40 rounded-2xl border border-white/10 bg-[#0B0C12]/95 p-6 shadow-2xl backdrop-blur-3xl md:hidden"
           >
             <nav className="flex flex-col gap-4">
               <Link
@@ -101,7 +101,7 @@ export default function Navbar() {
               </Link>
               <Link
                 href="/auth/patient"
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 font-semibold text-white"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#4D7CFF] p-4 font-semibold text-white"
               >
                 Get Started
               </Link>

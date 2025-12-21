@@ -61,6 +61,9 @@ export default function ProfilePage() {
   const [topupAmount, setTopupAmount] = useState<string>("500");
   const [topupLoading, setTopupLoading] = useState(false);
   const imageInput = useRef<HTMLInputElement | null>(null);
+  const profileImageKey = session?.user?.id
+    ? `medura:profile-image:${session.user.id}`
+    : "medura:profile-image";
 
   useEffect(() => {
     const fetchData = async () => {
@@ -83,7 +86,7 @@ export default function ProfilePage() {
               setProfileImage(pJson.profile.image);
               if (typeof window !== "undefined") {
                 window.localStorage.setItem(
-                  "medura:profile-image",
+                  profileImageKey,
                   pJson.profile.image,
                 );
               }
@@ -104,16 +107,17 @@ export default function ProfilePage() {
       }
     };
     fetchData();
-  }, []);
+  }, [profileImageKey, session?.user?.id]);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && !profileImage) {
-      const saved = window.localStorage.getItem("medura:profile-image");
+    if (typeof window === "undefined") return;
+    if (!profileImage) {
+      const saved = window.localStorage.getItem(profileImageKey);
       if (saved) {
         setProfileImage(saved);
       }
     }
-  }, [profileImage]);
+  }, [profileImage, profileImageKey]);
 
   const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -147,7 +151,7 @@ export default function ProfilePage() {
       }
       setProfileImage(imageUrl);
       if (typeof window !== "undefined") {
-        window.localStorage.setItem("medura:profile-image", imageUrl);
+        window.localStorage.setItem(profileImageKey, imageUrl);
       }
       const res = await fetch("/api/profile", {
         method: "PATCH",

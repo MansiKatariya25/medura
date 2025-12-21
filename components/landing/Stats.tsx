@@ -28,36 +28,36 @@ const stats = [
 ];
 
 export default function Stats() {
-    return (
-        <section className="border-y border-white/5 bg-black/20 backdrop-blur-sm">
-            <div className="container mx-auto max-w-6xl px-4 py-12">
-                <div className="grid gap-8 md:grid-cols-3">
-                    {stats.map((stat, index) => (
-                        <motion.div
-                            key={stat.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            transition={{ delay: index * 0.1 }}
-                            className="flex flex-col items-center justify-center gap-2 text-center md:flex-row md:text-left"
-                        >
-                            <div
-                                className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white/5 p-2.5 ${stat.color}`}
-                            >
-                                <stat.icon className="h-full w-full" />
-                            </div>
-                            <div>
-                                <div className="text-3xl font-bold tracking-tight text-white">
-                                    {stat.value}
-                                </div>
-                                <div className="text-sm font-medium text-white/50">
-                                    {stat.label}
-                                </div>
-                            </div>
-                        </motion.div>
-                    ))}
+  return (
+    <section className="border-y border-white/10 bg-[#07080F]">
+      <div className="container mx-auto max-w-6xl px-4 py-12">
+        <div className="grid gap-6 md:grid-cols-3">
+          {stats.map((stat, index) => (
+            <motion.div
+              key={stat.id}
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: index * 0.1 }}
+              className="flex items-center gap-4 rounded-2xl border border-white/10 bg-[#0f1116] px-5 py-4"
+            >
+              <div
+                className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white/5 ${stat.color}`}
+              >
+                <stat.icon className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-2xl font-semibold tracking-tight text-white">
+                  {stat.value}
                 </div>
-            </div>
-        </section>
-    );
+                <div className="text-xs uppercase tracking-wide text-white/50">
+                  {stat.label}
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }

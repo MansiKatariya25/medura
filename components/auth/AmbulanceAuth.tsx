@@ -51,7 +51,7 @@ export default function AmbulanceAuth() {
         }
       }
 
-      const signInRes = await signIn("credentials", { email, password, role: "ambulance", redirect: false, callbackUrl: "/home" });
+      const signInRes = await signIn("credentials", { email, password, role: "ambulance", redirect: false, callbackUrl: "/ambulance" });
       if (signInRes?.error || !signInRes?.ok) {
         setError("Invalid credentials");
         return;
@@ -59,7 +59,7 @@ export default function AmbulanceAuth() {
       if (signInRes.url) {
         router.replace(signInRes.url);
       } else {
-        router.replace("/home");
+        router.replace("/ambulance");
       }
       router.refresh();
     } catch (err) {

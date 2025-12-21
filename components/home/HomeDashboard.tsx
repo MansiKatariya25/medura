@@ -203,6 +203,9 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const countdownRef = useRef<number | null>(null);
   const readyTimeout = useRef<number | null>(null);
   const router = useRouter();
+  const profileImageKey = session?.user?.id
+    ? `medura:profile-image:${session.user.id}`
+    : "medura:profile-image";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -346,18 +349,18 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   useEffect(() => {
     const read = () => {
       if (typeof window === "undefined") return;
-      const stored = window.localStorage.getItem("medura:profile-image");
+      const stored = window.localStorage.getItem(profileImageKey);
       setAvatarImage(stored);
     };
     read();
     const listener = (event: StorageEvent) => {
-      if (event.key === "medura:profile-image") {
+      if (event.key === profileImageKey) {
         read();
       }
     };
     window.addEventListener("storage", listener);
     return () => window.removeEventListener("storage", listener);
-  }, []);
+  }, [profileImageKey]);
 
   useEffect(() => {
     return () => {
