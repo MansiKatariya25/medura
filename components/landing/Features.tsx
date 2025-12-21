@@ -33,7 +33,7 @@ const features = [
     },
     {
         title: "MedKey Integration",
-        description: "ABHA-integrated digital health passport.",
+        description: "MedKey digital health passport.",
         icon: QrCode,
         color: "text-orange-500",
         bg: "bg-orange-500/10",
@@ -45,7 +45,7 @@ const features = [
 
 export default function Features() {
     return (
-        <section className="bg-[#091E42] py-24 px-4">
+        <section id="why-medura" className="bg-[#091E42] py-24 px-4">
             <div className="container mx-auto max-w-6xl">
                 <div className="mb-16 text-center">
                     <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl font-[family-name:var(--font-dm-sans)]">

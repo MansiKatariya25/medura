@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, Download, Menu, X } from "lucide-react";
+import { Activity, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -48,12 +48,15 @@ export default function Navbar() {
           >
             For Ambulance
           </Link>
-          <button className="group relative overflow-hidden rounded-full bg-linear-to-r from-blue-600 to-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:shadow-blue-500/50">
+          <Link
+            href="/auth/patient"
+            className="group relative overflow-hidden rounded-full bg-linear-to-r from-blue-600 to-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:shadow-blue-500/50"
+          >
             <span className="relative z-10 flex items-center gap-2">
-              Download App <Download className="h-4 w-4" />
+              Get Started
             </span>
             <div className="absolute inset-0 -z-0 translate-y-full bg-linear-to-r from-indigo-600 to-blue-600 transition-transform duration-300 group-hover:translate-y-0" />
-          </button>
+          </Link>
         </div>
 
         {/* Mobile Toggle */}
@@ -96,9 +99,12 @@ export default function Navbar() {
                 <span>For Ambulance</span>
                 <Activity className="h-4 w-4 text-blue-500" />
               </Link>
-              <button className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 font-semibold text-white">
-                Download App <Download className="h-4 w-4" />
-              </button>
+              <Link
+                href="/auth/patient"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 font-semibold text-white"
+              >
+                Get Started
+              </Link>
             </nav>
           </motion.div>
         )}

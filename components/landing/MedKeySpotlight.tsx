@@ -6,7 +6,7 @@ import { Scan, QrCode } from "lucide-react";
 export default function MedKeySpotlight() {
     return (
         <section className="relative overflow-hidden py-32 px-4">
-            {/* Background with ABHA Orange + Medura Blue mix */}
+            {/* Background with MedKey blend */}
             <div className="absolute inset-0 bg-transparent">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-orange-500/10 blur-[100px]" />
                 <div className="absolute top-1/2 right-0 h-[400px] w-[400px] bg-blue-600/10 blur-[100px]" />
@@ -31,13 +31,13 @@ export default function MedKeySpotlight() {
                         </span>
                     </h2>
                     <p className="mb-8 text-lg text-white/60 leading-relaxed">
-                        Linked with Ayushman Bharat (ABHA). Securely share your allergies,
+                        Powered by MedKey unique ID. Securely share your allergies,
                         blood group, and past prescriptions with doctors instantly via QR.
                     </p>
 
                     <ul className="space-y-4">
                         {[
-                            "Government compliant (ABHA)",
+                            "MedKey verified identity",
                             "End-to-End Encrypted",
                             "Works offline via NFC"
                         ].map((item, i) => (
@@ -77,7 +77,7 @@ export default function MedKeySpotlight() {
                                 </div>
                             </div>
                             <div className="bg-orange-500/20 text-orange-400 px-2 py-1 rounded text-[10px] font-bold border border-orange-500/20">
-                                ABHA LINKED
+                                MEDKEY READY
                             </div>
                         </div>
 

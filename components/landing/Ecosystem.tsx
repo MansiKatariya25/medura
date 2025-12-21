@@ -59,7 +59,7 @@ export default function Ecosystem() {
                             </ul>
 
                             <Link href="/auth/patient" className="mt-8 inline-flex items-center gap-2 text-blue-400 font-semibold group-hover:gap-3 transition-all">
-                                Download App <ArrowRight className="h-4 w-4" />
+                                Get Started <ArrowRight className="h-4 w-4" />
                             </Link>
                         </div>
                     </motion.div>
@@ -94,7 +94,7 @@ export default function Ecosystem() {
                             <p className="mt-2 text-white/60">Streamlined triage and patient management.</p>
 
                             <ul className="mt-8 space-y-4">
-                                {["Video Telemedicine", "Instant Patient History (ABHA)", "Smart AI Triage Summary"].map((item, i) => (
+                                {["Video Telemedicine", "Instant Patient History (MedKey)", "Smart AI Triage Summary"].map((item, i) => (
                                     <li key={i} className="flex items-center gap-3 text-white/80">
                                         <CheckCircle2 className="h-5 w-5 text-green-500" />
                                         {item}

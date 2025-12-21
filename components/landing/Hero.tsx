@@ -114,11 +114,20 @@ export default function Hero() {
             transition={{ delay: 0.8 }}
             className="mt-8 flex flex-col gap-4 sm:flex-row"
           >
-            <button className="group relative flex items-center justify-center gap-3 rounded-full bg-red-600 px-8 py-4 font-bold text-white shadow-lg shadow-red-600/30 transition hover:scale-110 hover:shadow-red-600/50 active:scale-95">
+            <button
+              onClick={() => (window.location.href = "/auth")}
+              className="group relative flex items-center justify-center gap-3 rounded-full bg-red-600 px-8 py-4 font-bold text-white shadow-lg shadow-red-600/30 transition hover:scale-110 hover:shadow-red-600/50 active:scale-95"
+            >
               <ShieldAlert className="h-5 w-5 animate-pulse" />
               <span>Get Help Now</span>
             </button>
-            <button className="group flex items-center justify-center gap-3 rounded-full border border-white/10 bg-white/5 px-8 py-4 font-semibold text-white backdrop-blur-sm transition hover:bg-white/10 hover:scale-105">
+            <button
+              onClick={() => {
+                const el = document.getElementById("why-medura");
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="group flex items-center justify-center gap-3 rounded-full border border-white/10 bg-white/5 px-8 py-4 font-semibold text-white backdrop-blur-sm transition hover:bg-white/10 hover:scale-105"
+            >
               <Play className="h-5 w-5 fill-current" />
               <span>View Features</span>
             </button>
