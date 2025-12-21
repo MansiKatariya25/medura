@@ -14,6 +14,7 @@ type Community = {
   members?: number;
   locationName?: string;
   locationCoords?: { type: "Point"; coordinates: [number, number] };
+  avatarUrl?: string | null;
 };
 
 type Suggestion = {
