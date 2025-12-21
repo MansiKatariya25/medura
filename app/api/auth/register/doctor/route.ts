@@ -10,7 +10,7 @@ const doctorSchema = z.object({
   specialization: z.string().min(2).max(80),
   email: z.string().email(),
   password: z.string().min(8).max(72),
-  location: z.string().optional(),
+  location: z.string().optional().nullable(),
 });
 
 export async function POST(req: Request) {

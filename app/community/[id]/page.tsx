@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { io, type Socket } from "socket.io-client";
 import {
   ArrowLeft,
   MoreVertical,
@@ -74,7 +75,7 @@ export default function CommunityDetailPage() {
   const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const isJoined = joinedIds.includes(id);
-  const wsRef = useRef<WebSocket | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -105,30 +106,6 @@ export default function CommunityDetailPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem("medura:joined-communities");
-      if (raw) {
-        setJoinedIds(JSON.parse(raw) as string[]);
-      }
-    } catch {
-      setJoinedIds([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(
-        "medura:joined-communities",
-        JSON.stringify(joinedIds),
-      );
-    } catch {
-      // ignore
-    }
-  }, [joinedIds]);
 
   const fetchCommunity = useCallback(async () => {
     if (!id) return;
@@ -183,91 +160,70 @@ export default function CommunityDetailPage() {
     if (typeof window === "undefined" || !id) return;
 
     const connect = () => {
-      const url =
-        process.env.NEXT_PUBLIC_WS_URL ||
-        `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/community`;
       try {
-        const ws = new WebSocket(url);
-        wsRef.current = ws;
+        const socket = io({
+          path: "/socket.io",
+          withCredentials: true,
+          reconnection: true,
+          reconnectionAttempts: Infinity,
+          reconnectionDelay: 1000,
+        });
+        socketRef.current = socket;
 
-        ws.addEventListener("open", () => {
+        socket.on("connect", () => {
           setWsStatus("connected");
           setOnlineCount((prev) => Math.max(prev, 1));
           if (reconnectTimerRef.current) {
             clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = null;
           }
-          ws.send(
-            JSON.stringify({
-              type: "identify",
-              userId: session?.user?.id || "anon",
-              userName: currentUserName,
-            }),
-          );
-          ws.send(
-            JSON.stringify({
-              type: "join",
-              groupId: id,
-            }),
-          );
+          socket.emit("identify", {
+            userId: session?.user?.id || "anon",
+            userName: currentUserName,
+          });
+          socket.emit("join", { groupId: id });
         });
 
-        const scheduleReconnect = () => {
+        socket.on("disconnect", () => {
           setWsStatus("disconnected");
           setOnlineCount(0);
-          if (reconnectTimerRef.current) return;
-          reconnectTimerRef.current = setTimeout(() => {
-            reconnectTimerRef.current = null;
-            connect();
-          }, 2000);
-        };
+        });
 
-        ws.addEventListener("close", scheduleReconnect);
-        ws.addEventListener("error", scheduleReconnect);
-        ws.addEventListener("message", (event) => {
-          try {
-            const payload = JSON.parse(event.data) as {
-              messageId?: string;
-              type?: string;
-              groupId?: string;
-              from?: string;
-              text?: string;
-              time?: number;
-              authorId?: string | null;
-              count?: number;
-            };
+        socket.on("online", (payload: { groupId?: string; count?: number }) => {
+          if (payload.groupId !== id) return;
+          setOnlineCount(typeof payload.count === "number" ? payload.count : 1);
+        });
+
+        socket.on(
+          "message",
+          (payload: {
+            groupId?: string;
+            from?: string;
+            text?: string;
+            time?: number;
+            authorId?: string | null;
+            messageId?: string | null;
+          }) => {
             if (payload.groupId !== id) return;
-            if (payload.type === "online") {
-              setOnlineCount(
-                typeof payload.count === "number" ? payload.count : 1,
-              );
+            if (!payload.text) return;
+            if (payload.messageId && sentMessageIdsRef.current.has(payload.messageId)) {
               return;
             }
-            if (payload.type === "message" && payload.text) {
-              if (payload.messageId && sentMessageIdsRef.current.has(payload.messageId)) {
-                return;
-              }
-              if (payload.from && payload.from === currentUserName) {
-                return;
-              }
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `msg-${Date.now()}`,
-                  communityId: id,
-                  authorName: payload.from || "Member",
-                  authorId: payload.authorId || null,
-                  text: payload.text || "",
-                  createdAt: payload.time
-                    ? new Date(payload.time).toISOString()
-                    : new Date().toISOString(),
-                },
-              ]);
-            }
-          } catch {
-            // ignore
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `msg-${Date.now()}`,
+                communityId: id,
+                authorName: payload.from || "Member",
+                authorId: payload.authorId || null,
+                text: payload.text || "",
+                createdAt: payload.time
+                  ? new Date(payload.time).toISOString()
+                  : new Date().toISOString(),
+              },
+            ]);
           }
-        });
+        );
       } catch {
         setWsStatus("disconnected");
       }
@@ -280,7 +236,7 @@ export default function CommunityDetailPage() {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
-      wsRef.current?.close();
+      socketRef.current?.disconnect();
     };
   }, [id, currentUserName, session?.user?.id]);
 
@@ -461,16 +417,13 @@ export default function CommunityDetailPage() {
       text,
       createdAt: new Date().toISOString(),
     };
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: "message",
-          groupId: id,
-          text,
-          messageId,
-          authorId: session?.user?.id ? String(session.user.id) : null,
-        })
-      );
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("message", {
+        groupId: id,
+        text,
+        messageId,
+        authorId: session?.user?.id ? String(session.user.id) : null,
+      });
     }
     setMessages((prev) => [...prev, { id: `msg-${Date.now()}`, ...payload }]);
     setComposer("");
@@ -702,7 +655,7 @@ export default function CommunityDetailPage() {
                       ref={(node) => {
                         dateRefs.current[label] = node;
                       }}
-                      className="flex items-center justify-center py-2"
+                      className="flex items-center justify-center py-2 z-0"
                     >
                       <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/60">
                         {label}

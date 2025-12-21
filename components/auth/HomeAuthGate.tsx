@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 import AuthScreen from "@/components/auth/AuthScreen";
 import CompleteProfileModal from "@/components/auth/CompleteProfileModal";
@@ -9,12 +11,24 @@ import HomeDashboardSkeleton from "@/components/home/HomeDashboardSkeleton";
 
 export default function HomeAuthGate() {
   const { data: session, status } = useSession();
+  const router = useRouter();
+  const role = (session?.user as any)?.role;
+
+  useEffect(() => {
+    if (role === "doctor") {
+      router.replace("/doctors");
+    }
+  }, [role, router]);
 
   if (status === "loading") {
     return <HomeDashboardSkeleton />;
   }
 
   if (!session) return <AuthScreen />;
+
+  if (role === "doctor") {
+    return null;
+  }
 
   const userName =
     session.user.fullName ?? session.user.name ?? session.user.email ?? "Hi";

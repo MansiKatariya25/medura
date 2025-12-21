@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
 import {
   Activity,
@@ -35,6 +35,14 @@ import type { Doctor } from "@/schemas/doctor";
 
 
 type IconComponent = ComponentType<{ className?: string }>;
+
+type NotificationItem = {
+  id: string;
+  title: string;
+  body: string;
+  time: string;
+  read: boolean;
+};
 
 const categoryIconMap: Record<string, IconComponent> = {
   all: HeartPulse,
@@ -120,6 +128,7 @@ function RoundedIconButton({
 
 export default function HomeDashboard({ userName }: { userName: string }) {
   const locationLabel = useLocationLabel();
+  const searchParams = useSearchParams();
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [recordSearchQuery, setRecordSearchQuery] = useState("");
@@ -145,12 +154,22 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [slideProgress, setSlideProgress] = useState(0);
   const [countdown, setCountdown] = useState(10);
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const collapsedCategoryLimit = 6;
   const holdTimer = useRef<number | null>(null);
   const startX = useRef(0);
   const countdownRef = useRef<number | null>(null);
   const readyTimeout = useRef<number | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (!tab) return;
+    if (["home", "community", "medkey", "profile"].includes(tab)) {
+      setSelectedTab(tab);
+      setDisplayedTab(tab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let mounted = true;
@@ -240,6 +259,65 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     setHasMoreDoctors(true);
     fetchDoctors(1, false);
   }, [activeCategory, fetchDoctors, searchQuery]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem("medura:notifications");
+    if (raw) {
+      try {
+        setNotifications(JSON.parse(raw) as NotificationItem[]);
+        return;
+      } catch {
+        // ignore
+      }
+    }
+    setNotifications([
+      {
+        id: "notif-1",
+        title: "Community update",
+        body: "Heart Care Circle posted a new session for Saturday.",
+        time: "2m ago",
+        read: false,
+      },
+      {
+        id: "notif-2",
+        title: "MedKey synced",
+        body: "Your health records were successfully synced.",
+        time: "1h ago",
+        read: false,
+      },
+      {
+        id: "notif-3",
+        title: "Doctor availability",
+        body: "Dr. Anurag is available for video consults.",
+        time: "Yesterday",
+        read: true,
+      },
+    ]);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => {
+      const raw = window.localStorage.getItem("medura:notifications");
+      if (!raw) return;
+      try {
+        setNotifications(JSON.parse(raw) as NotificationItem[]);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("medura:notifications-update", handler);
+    return () => window.removeEventListener("medura:notifications-update", handler);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      "medura:notifications",
+      JSON.stringify(notifications),
+    );
+  }, [notifications]);
+
 
   useEffect(() => {
     const node = sentinelRef.current;
@@ -392,10 +470,16 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="rounded-full border border-white/20 bg-white/25 p-3 text-white/70"
+              className="relative rounded-full border border-white/20 bg-white/25 p-3 text-white/70"
               aria-label="Notifications"
+              onClick={() => router.push("/notifications")}
             >
               <Bell className="h-4 w-4 text-white" />
+              {notifications.some((n) => !n.read) ? (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                  {notifications.filter((n) => !n.read).length}
+                </span>
+              ) : null}
             </button>
           </div>
         </div>
@@ -750,6 +834,16 @@ export default function HomeDashboard({ userName }: { userName: string }) {
             onClose={() => setIsUploadOpen(false)}
             onUpload={(data) => {
               setUploadedRecords(prev => [data, ...prev]);
+              setNotifications((prev) => [
+                {
+                  id: `notif-${Date.now()}`,
+                  title: "Record uploaded",
+                  body: `${data.title} was added to your MedKey records.`,
+                  time: "Just now",
+                  read: false,
+                },
+                ...prev,
+              ]);
             }}
           />
 

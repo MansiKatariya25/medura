@@ -10,6 +10,8 @@ const patchSchema = z.object({
   fullName: z.string().min(2).max(80).optional(),
   dob: z.string().min(8).max(32).optional(),
   gender: z.enum(["male", "female", "other", "prefer_not_say"]).optional(),
+  specialization: z.string().min(2).max(80).optional().nullable(),
+  location: z.string().min(2).max(120).optional().nullable(),
 });
 
 export async function PATCH(req: Request) {
@@ -43,6 +45,20 @@ export async function PATCH(req: Request) {
   const client = await clientPromise;
   const db = client.db();
 
+  const user = await db.collection("users").findOne<{ role?: string }>(
+    { _id: new ObjectId(session.user.id) },
+    { projection: { role: 1 } },
+  );
+
+  if (user?.role === "doctor") {
+    if (parsed.data.specialization !== undefined) {
+      updates.specialization = parsed.data.specialization ?? null;
+    }
+    if (parsed.data.location !== undefined) {
+      updates.location = parsed.data.location ?? null;
+    }
+  }
+
   await db.collection("users").updateOne(
     { _id: new ObjectId(session.user.id) },
     { $set: updates },
@@ -69,6 +85,9 @@ export async function GET(req: Request) {
       gender: user.gender ?? null,
       email: user.email ?? session.user.email ?? null,
       profileComplete: Boolean(user.profileComplete),
+      specialization: user.specialization ?? null,
+      location: user.location ?? null,
+      role: user.role ?? null,
     }});
   } catch (err) {
     console.error(err);
