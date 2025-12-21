@@ -18,6 +18,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
 type Community = {
+  id: any;
   _id?: string;
   name: string;
   description: string;
@@ -761,10 +762,10 @@ export default function CommunityDetailPage() {
               </div>
               <h2 className="mt-4 text-xl font-semibold">{community?.name || "Community"}</h2>
               <p className="mt-1 text-sm text-white/50">
-                {community.members ?? 0} members
+                {community?.members ?? 0} members
               </p>
               <p className="mt-3 max-w-md text-sm text-white/70">
-                {community.description}
+                {community?.description}
               </p>
             </div>
 
@@ -780,16 +781,16 @@ export default function CommunityDetailPage() {
             <div className="mt-6 space-y-4 border-t border-white/10 pt-5 text-sm text-white/70">
               <div className="flex items-center justify-between">
                 <span>Location</span>
-                <span className="text-white/50">{community.locationName}</span>
+                <span className="text-white/50">{community?.locationName}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>Next session</span>
-                <span className="text-white/50">{community.nextSession}</span>
+                <span className="text-white/50">{community?.nextSession}</span>
               </div>
               <div className="flex flex-wrap gap-2">
-                {community.tags.map((tag) => (
+                {(community?.tags || []).map((tag) => (
                   <span
-                    key={`${community.id}-${tag}`}
+                    key={`${community?.id}-${tag}`}
                     className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/60"
                   >
                     {tag}
