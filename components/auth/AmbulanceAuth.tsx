@@ -39,6 +39,11 @@ export default function AmbulanceAuth() {
 
     try {
       if (mode === "signup") {
+        if (password && password.length < 8) {
+          setError("Password must be at least 8 characters.");
+          setLoading(false);
+          return;
+        }
         const res = await fetch("/api/auth/register/ambulance", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -92,6 +97,9 @@ export default function AmbulanceAuth() {
 
             <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            {mode === "signup" ? (
+              <div className="text-sm text-white/60">Password must be at least 8 characters.</div>
+            ) : null}
 
             {error ? <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
 
