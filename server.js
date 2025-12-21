@@ -124,6 +124,32 @@ app.prepare().then(() => {
       }
     });
 
+    socket.on("call:offer", ({ toUserId, roomName, sdp, callerId, callerName }) => {
+      const target = toUserId ? userSockets.get(toUserId) : null;
+      if (target) {
+        io.to(target).emit("call:offer", {
+          roomName,
+          sdp,
+          callerId: callerId || socket.data.userId || null,
+          callerName: callerName || socket.data.userName || "Caller",
+        });
+      }
+    });
+
+    socket.on("call:answer", ({ toUserId, roomName, sdp }) => {
+      const target = toUserId ? userSockets.get(toUserId) : null;
+      if (target) {
+        io.to(target).emit("call:answer", { roomName, sdp });
+      }
+    });
+
+    socket.on("call:ice", ({ toUserId, roomName, candidate }) => {
+      const target = toUserId ? userSockets.get(toUserId) : null;
+      if (target && candidate) {
+        io.to(target).emit("call:ice", { roomName, candidate });
+      }
+    });
+
     socket.on("disconnecting", () => {
       const rooms = Array.from(socket.rooms).filter((roomId) => roomId !== socket.id);
       rooms.forEach((roomId) => {

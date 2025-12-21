@@ -170,8 +170,11 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const videoCallIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const callStartRef = useRef<number | null>(null);
   const [onlineDoctorIds, setOnlineDoctorIds] = useState<Set<string>>(new Set());
-  const zegoInstanceRef = useRef<any>(null);
-  const zegoContainerRef = useRef<HTMLDivElement | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const formatSummary = (text?: string) => {
     if (!text) return null;
@@ -928,11 +931,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
         role: session?.user ? (session.user as any).role || null : null,
       });
     });
-    socket.on("call:incoming", (payload: any) => {
-      setVideoCallState("incoming");
-      setVideoCallRoom(payload.roomName);
-      setCallPartner({ id: payload.callerId, name: payload.callerName, price: payload.pricePerMinute });
-    });
+    // Caller handles offer/answer; incoming handled by doctor in CallListener
     socket.on("presence:online-list", (payload: any) => {
       const ids = Array.isArray(payload?.userIds) ? payload.userIds.map(String) : [];
       setOnlineDoctorIds(new Set(ids));
@@ -947,14 +946,15 @@ export default function HomeDashboard({ userName }: { userName: string }) {
         return next;
       });
     });
-    socket.on("call:answered", (payload: any) => {
-      if (payload.roomName === videoCallRoom) {
-        setVideoCallState("active");
-        startCallTimer();
-        if (videoCallRoom) {
-          connectLiveKit(videoCallRoom);
-        }
-      }
+    socket.on("call:answer", async (payload: any) => {
+      if (payload.roomName !== videoCallRoom || !payload.sdp) return;
+      await handleRemoteAnswer(payload.sdp);
+      setVideoCallState("active");
+      startCallTimer();
+    });
+    socket.on("call:ice", async (payload: any) => {
+      if (payload.roomName !== videoCallRoom || !payload.candidate) return;
+      await handleRemoteIce(payload.candidate);
     });
     socket.on("call:declined", (payload: any) => {
       if (payload.roomName === videoCallRoom) {
@@ -1067,13 +1067,22 @@ export default function HomeDashboard({ userName }: { userName: string }) {
 
   const resetCall = () => {
     if (videoCallIntervalRef.current) clearInterval(videoCallIntervalRef.current);
-    if (zegoInstanceRef.current) {
-      zegoInstanceRef.current.destroy();
-      zegoInstanceRef.current = null;
+    if (pcRef.current) {
+      pcRef.current.onicecandidate = null;
+      pcRef.current.ontrack = null;
+      pcRef.current.close();
+      pcRef.current = null;
     }
-    if (zegoContainerRef.current) {
-      zegoContainerRef.current.innerHTML = "";
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
     }
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((t) => t.stop());
+      remoteStreamRef.current = null;
+    }
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     setVideoCallTimer(0);
     setVideoCallRoom(null);
     setCallPartner({});
@@ -1095,6 +1104,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
         callerName: session?.user?.name || userName || "User",
         callerId: session?.user?.id || null,
       });
+      startCaller(roomName).catch(() => resetCall());
     } else {
       // attempt a reconnect once, then emit after open
       socketRef.current?.connect();
@@ -1106,6 +1116,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           callerName: session?.user?.name || userName || "User",
           callerId: session?.user?.id || null,
         });
+        startCaller(roomName).catch(() => resetCall());
       });
     }
   };
@@ -1118,7 +1129,6 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     });
     setVideoCallState("active");
     startCallTimer();
-    connectLiveKit(videoCallRoom);
   };
 
   const handleDeclineCall = () => {
@@ -1156,40 +1166,73 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     resetCall();
   };
 
-  const connectLiveKit = async (roomName: string) => {
+  const createPeerConnection = () => {
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socketRef.current && videoCallRoom && callPartner.id) {
+        socketRef.current.emit("call:ice", {
+          toUserId: callPartner.id,
+          roomName: videoCallRoom,
+          candidate: event.candidate,
+        });
+      }
+    };
+    pc.ontrack = (event) => {
+      const stream = event.streams?.[0];
+      if (stream && remoteVideoRef.current) {
+        remoteStreamRef.current = stream;
+        remoteVideoRef.current.srcObject = stream;
+        stream.getVideoTracks()[0]?.enabled;
+        remoteVideoRef.current.play().catch(() => undefined);
+      }
+    };
+    pcRef.current = pc;
+    return pc;
+  };
+
+  const startLocalStream = async () => {
+    if (localStreamRef.current) return localStreamRef.current;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localStreamRef.current = stream;
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+      localVideoRef.current.play().catch(() => undefined);
+    }
+    return stream;
+  };
+
+  const startCaller = async (roomName: string) => {
     try {
-      if (!zegoContainerRef.current) return;
-      const { ZegoUIKitPrebuilt } = await import("@zegocloud/zego-uikit-prebuilt");
-      const appId = Number(process.env.NEXT_PUBLIC_ZEGO_APP_ID || process.env.ZEGO_APP_ID);
-      const serverSecret = process.env.ZEGO_SERVER_SECRET;
-      if (!appId || !serverSecret) throw new Error("Zego not configured");
-      const userId = (session?.user?.id as string) || `user-${Date.now()}`;
-      const userName = session?.user?.name || "User";
-      const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-        appId,
-        serverSecret,
+      const pc = createPeerConnection();
+      const stream = await startLocalStream();
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socketRef.current?.emit("call:offer", {
+        toUserId: callPartner.id,
         roomName,
-        userId,
-        userName,
-      );
-      const zp = ZegoUIKitPrebuilt.create(kitToken);
-      zegoInstanceRef.current = zp;
-      zp.joinRoom({
-        container: zegoContainerRef.current,
-        sharedLinks: [],
-        showPreJoinView: false,
-        turnOnCameraWhenJoining: true,
-        turnOnMicrophoneWhenJoining: true,
-        showLeavingView: false,
-        scenario: {
-          mode: ZegoUIKitPrebuilt.OneONoneCall,
-        },
-        onLeaveRoom: () => {
-          resetCall();
-        },
+        sdp: offer.sdp,
+        callerId: session?.user?.id || null,
+        callerName: session?.user?.name || userName || "User",
       });
+    } catch (err) {
+      resetCall();
+    }
+  };
+
+  const handleRemoteAnswer = async (sdp: string) => {
+    if (!pcRef.current) return;
+    await pcRef.current.setRemoteDescription({ type: "answer", sdp });
+  };
+
+  const handleRemoteIce = async (candidate: RTCIceCandidateInit) => {
+    if (!pcRef.current) return;
+    try {
+      await pcRef.current.addIceCandidate(candidate);
     } catch {
-      setVideoCallState("idle");
+      // ignore
     }
   };
 
@@ -1594,7 +1637,9 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                     Duration: {Math.floor(videoCallTimer / 60).toString().padStart(2, "0")}:
                     {(videoCallTimer % 60).toString().padStart(2, "0")}
                   </p>
-                ) : null}
+                ) : (
+                  <p className="text-xs text-white/50">Connecting…</p>
+                )}
               </div>
               <button
                 onClick={handleEndCall}
@@ -1604,10 +1649,23 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               </button>
             </div>
             <div className="overflow-hidden rounded-xl border border-white/10">
-              <div
-                ref={zegoContainerRef}
-                className="relative h-105 w-full overflow-hidden rounded-xl bg-black"
-              />
+              <div className="relative h-105 w-full overflow-hidden rounded-xl bg-black">
+                <video
+                  ref={remoteVideoRef}
+                  className="h-full w-full object-cover"
+                  playsInline
+                  autoPlay
+                />
+                <div className="absolute bottom-3 right-3 h-24 w-32 overflow-hidden rounded-lg border border-white/20 bg-black/80">
+                  <video
+                    ref={localVideoRef}
+                    className="h-full w-full object-cover"
+                    playsInline
+                    autoPlay
+                    muted
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>

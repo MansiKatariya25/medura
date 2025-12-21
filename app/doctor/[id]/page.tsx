@@ -2,11 +2,9 @@
 
 import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { io, type Socket } from "socket.io-client";
-// Dynamically import inside functions to avoid SSR issues
-import { HeartPulse, X } from "lucide-react";
+import { HeartPulse } from "lucide-react";
 import type { Doctor } from "@/types/doctor";
 
 export default function DoctorPage() {
@@ -23,12 +21,6 @@ export default function DoctorPage() {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [callState, setCallState] = useState<"idle" | "incoming" | "active">("idle");
-  const [callRoom, setCallRoom] = useState<string | null>(null);
-  const [caller, setCaller] = useState<{ id?: string | null; name?: string | null }>({});
-  const socketRef = useRef<Socket | null>(null);
-  const zegoInstanceRef = useRef<any>(null);
-  const zegoContainerRef = useRef<HTMLDivElement | null>(null);
 
   const isOwnDoctor =
     !!id && session?.user?.id === id && (session.user as any).role === "doctor";
@@ -61,31 +53,6 @@ export default function DoctorPage() {
     };
   }, [id]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const raw = window.sessionStorage.getItem("medura:incoming-call");
-    if (!raw) return;
-    try {
-      const data = JSON.parse(raw) as {
-        roomName?: string;
-        callerId?: string | null;
-        callerName?: string | null;
-        accepted?: boolean;
-      };
-      if (!data?.roomName) return;
-      setCallRoom(data.roomName);
-      setCaller({ id: data.callerId || null, name: data.callerName || "Patient" });
-      if (data.accepted) {
-        setCallState("active");
-        connectLiveKit(data.roomName || "");
-      } else {
-        setCallState("incoming");
-      }
-      window.sessionStorage.removeItem("medura:incoming-call");
-    } catch {
-      // ignore
-    }
-  }, []);
 
   const today = new Date();
   const week = useMemo(() =>
@@ -148,121 +115,6 @@ export default function DoctorPage() {
     }
   };
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const socket = io({
-      path: "/socket.io",
-      withCredentials: true,
-      reconnection: true,
-    });
-    socketRef.current = socket;
-    socket.on("connect", () => {
-      socket.emit("identify-user", {
-        userId: session?.user?.id || null,
-        userName: session?.user?.name || doctor?.name || "Doctor",
-        role: session?.user ? (session.user as any).role || "doctor" : "doctor",
-      });
-    });
-    socket.on("call:incoming", (payload: any) => {
-      setCallState("incoming");
-      setCallRoom(payload.roomName);
-      setCaller({ id: payload.callerId || null, name: payload.callerName });
-    });
-    socket.on("call:ended", () => {
-      setCallState("idle");
-      setCallRoom(null);
-      setCaller({});
-    });
-    socket.on("call:declined", () => {
-      setCallState("idle");
-      setCallRoom(null);
-      setCaller({});
-    });
-    return () => {
-      socket.disconnect();
-    };
-  }, [session?.user?.id, session?.user?.name, doctor?.name]);
-
-  useEffect(() => {
-    if (!socketRef.current?.connected) return;
-    if (!session?.user?.id) return;
-    socketRef.current.emit("identify-user", {
-      userId: session.user.id,
-      userName: session.user.name || doctor?.name || "Doctor",
-      role: (session.user as any)?.role || "doctor",
-    });
-  }, [session?.user?.id, session?.user?.name, doctor?.name]);
-
-  const acceptCall = () => {
-    if (!socketRef.current || !callRoom) return;
-    socketRef.current.emit("call:answer", {
-      toUserId: caller?.id || null,
-      roomName: callRoom,
-    });
-    setCallState("active");
-    connectLiveKit(callRoom);
-  };
-
-  const declineCall = () => {
-    if (!socketRef.current || !callRoom) return;
-    socketRef.current.emit("call:decline", {
-      toUserId: caller?.id || null,
-      roomName: callRoom,
-    });
-    cleanupCall();
-  };
-
-  const endCall = () => {
-    if (socketRef.current && callRoom) {
-      socketRef.current.emit("call:end", { toUserId: caller?.id || null, roomName: callRoom });
-    }
-    cleanupCall();
-  };
-
-  const cleanupCall = () => {
-    if (zegoInstanceRef.current) {
-      zegoInstanceRef.current.destroy();
-      zegoInstanceRef.current = null;
-    }
-    if (zegoContainerRef.current) {
-      zegoContainerRef.current.innerHTML = "";
-    }
-    setCallState("idle");
-    setCallRoom(null);
-  };
-
-  const connectLiveKit = async (roomName: string) => {
-    try {
-      if (!zegoContainerRef.current) return;
-      const { ZegoUIKitPrebuilt } = await import("@zegocloud/zego-uikit-prebuilt");
-      const appId = Number(process.env.NEXT_PUBLIC_ZEGO_APP_ID || process.env.ZEGO_APP_ID);
-      const serverSecret = process.env.ZEGO_SERVER_SECRET;
-      if (!appId || !serverSecret) throw new Error("Zego not configured");
-      const userId = (session?.user?.id as string) || `user-${Date.now()}`;
-      const userName = session?.user?.name || "Doctor";
-      const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-        appId,
-        serverSecret,
-        roomName,
-        userId,
-        userName,
-      );
-      const zp = ZegoUIKitPrebuilt.create(kitToken);
-      zegoInstanceRef.current = zp;
-      zp.joinRoom({
-        container: zegoContainerRef.current,
-        sharedLinks: [],
-        showPreJoinView: false,
-        turnOnCameraWhenJoining: true,
-        turnOnMicrophoneWhenJoining: true,
-        showLeavingView: false,
-        scenario: { mode: ZegoUIKitPrebuilt.OneONoneCall },
-        onLeaveRoom: () => cleanupCall(),
-      });
-    } catch {
-      cleanupCall();
-    }
-  };
 
   const toggleDay = (day: string) => {
     setAvailability((prev) =>
@@ -448,61 +300,6 @@ export default function DoctorPage() {
         </div>
       </div>
 
-      {callState === "incoming" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-sm rounded-2xl bg-[#0f1116] p-5 text-white">
-            <h3 className="text-lg font-semibold">Incoming call</h3>
-            <p className="mt-2 text-sm text-white/70">
-              {caller.name || "Caller"}
-            </p>
-            <div className="mt-4 flex gap-3">
-              <button
-                onClick={declineCall}
-                className="flex-1 rounded-full border border-white/15 bg-white/5 py-2 text-sm text-white hover:bg-white/10"
-              >
-                Decline
-              </button>
-              <button
-                onClick={acceptCall}
-                className="flex-1 rounded-full bg-[#4D7CFF] py-2 text-sm font-semibold text-white"
-              >
-                Accept
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {callState === "active" && callRoom && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-2xl space-y-3 rounded-2xl bg-[#0f1116] p-4 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-white/60">In call</p>
-                <p className="text-lg font-semibold">{caller.name || "Patient"}</p>
-              </div>
-              <button
-                onClick={endCall}
-                className="rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white"
-              >
-                End
-              </button>
-            </div>
-            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
-              <div
-                ref={zegoContainerRef}
-                className="relative h-[420px] w-full overflow-hidden rounded-xl bg-black"
-              />
-            </div>
-            <button
-              onClick={() => setCallState("active")}
-              className="absolute right-3 top-3 text-white/60 hover:text-white"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }

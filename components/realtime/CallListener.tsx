@@ -2,31 +2,32 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { usePathname, useRouter } from "next/navigation";
 import { io, type Socket } from "socket.io-client";
-// Dynamically import Zego inside connect to avoid SSR issues
 import { PhoneCall, PhoneOff, X } from "lucide-react";
 
 type IncomingCall = {
   roomName: string;
   callerId?: string | null;
   callerName?: string | null;
+  sdp?: string | null;
 };
 
 const STORAGE_KEY = "medura:incoming-call";
 
 export default function CallListener() {
   const { data: session } = useSession();
-  const pathname = usePathname();
   const socketRef = useRef<Socket | null>(null);
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const [userRole, setUserRole] = useState<string | null>(
     session?.user ? ((session.user as any)?.role as string) ?? null : null,
   );
   const [callActive, setCallActive] = useState(false);
-  const zegoInstanceRef = useRef<any>(null);
-  const zegoContainerRef = useRef<HTMLDivElement | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -80,21 +81,54 @@ export default function CallListener() {
       ).toLowerCase();
       // allow popup unless explicitly patient
       if (role === "patient") return;
-      if (pathname.startsWith("/doctor/")) return;
-      const next: IncomingCall = {
-        roomName: payload.roomName,
-        callerId: payload.callerId || null,
-        callerName: payload.callerName || "Patient",
-      };
-      setIncoming(next);
+      setIncoming((prev) => ({
+        roomName: payload.roomName || prev?.roomName || "",
+        callerId: payload.callerId || prev?.callerId || null,
+        callerName: payload.callerName || prev?.callerName || "Patient",
+        sdp: prev?.sdp || null,
+      }));
       if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        window.sessionStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            roomName: payload.roomName,
+            callerId: payload.callerId || null,
+            callerName: payload.callerName || "Patient",
+          }),
+        );
       }
+    });
+    socket.on("call:offer", (payload: any) => {
+      const role = String(
+        userRole || (session?.user as any)?.role || "",
+      ).toLowerCase();
+      if (role === "patient") return;
+      setIncoming((prev) => ({
+        roomName: payload.roomName || prev?.roomName || "",
+        callerId: payload.callerId || prev?.callerId || null,
+        callerName: payload.callerName || prev?.callerName || "Patient",
+        sdp: payload.sdp || prev?.sdp || null,
+      }));
+    });
+    socket.on("call:ice", async (payload: any) => {
+      if (!payload?.candidate) return;
+      if (!pcRef.current) return;
+      try {
+        await pcRef.current.addIceCandidate(payload.candidate);
+      } catch {
+        // ignore
+      }
+    });
+    socket.on("call:ended", () => {
+      cleanupCall();
+    });
+    socket.on("call:declined", () => {
+      cleanupCall();
     });
     return () => {
       socket.disconnect();
     };
-  }, [session?.user?.id, session?.user?.name, pathname, userRole]);
+  }, [session?.user?.id, session?.user?.name, userRole]);
 
   useEffect(() => {
     if (!socketRef.current?.connected) return;
@@ -106,20 +140,35 @@ export default function CallListener() {
     });
   }, [session?.user?.id, session?.user?.name]);
 
-  const handleAccept = () => {
+  const handleAccept = async () => {
     if (!incoming || !socketRef.current) return;
-    socketRef.current.emit("call:answer", {
-      toUserId: incoming.callerId || null,
-      roomName: incoming.roomName,
-    });
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ ...incoming, accepted: true }),
-      );
+    if (!incoming.sdp) {
+      setCallError("Call offer missing. Please try again.");
+      return;
     }
-    setCallActive(true);
-    connectLiveKit(incoming.roomName || "");
+    try {
+      setCallError(null);
+      const pc = createPeerConnection(incoming.callerId || null);
+      const stream = await startLocalStream();
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      await pc.setRemoteDescription({ type: "offer", sdp: incoming.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socketRef.current.emit("call:answer", {
+        toUserId: incoming.callerId || null,
+        roomName: incoming.roomName,
+        sdp: answer.sdp,
+      });
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ ...incoming, accepted: true }),
+        );
+      }
+      setCallActive(true);
+    } catch (err: any) {
+      setCallError(err?.message || "Unable to connect call");
+    }
   };
 
   const handleDecline = () => {
@@ -145,51 +194,60 @@ export default function CallListener() {
   };
 
   const cleanupCall = () => {
-    if (zegoInstanceRef.current) {
-      zegoInstanceRef.current.destroy();
-      zegoInstanceRef.current = null;
+    if (pcRef.current) {
+      pcRef.current.onicecandidate = null;
+      pcRef.current.ontrack = null;
+      pcRef.current.close();
+      pcRef.current = null;
     }
-    if (zegoContainerRef.current) {
-      zegoContainerRef.current.innerHTML = "";
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
     }
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((t) => t.stop());
+      remoteStreamRef.current = null;
+    }
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     setCallActive(false);
     setIncoming(null);
   };
 
-  const connectLiveKit = async (roomName: string) => {
-    try {
-      setCallError(null);
-      if (!zegoContainerRef.current) return;
-      const { ZegoUIKitPrebuilt } = await import("@zegocloud/zego-uikit-prebuilt");
-      const appId = Number(process.env.NEXT_PUBLIC_ZEGO_APP_ID || process.env.ZEGO_APP_ID);
-      const serverSecret = process.env.ZEGO_SERVER_SECRET;
-      if (!appId || !serverSecret) throw new Error("Zego not configured");
-      const userId = (session?.user?.id as string) || `user-${Date.now()}`;
-      const userName = session?.user?.name || "Doctor";
-      const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-        appId,
-        serverSecret,
-        roomName,
-        userId,
-        userName,
-      );
-      const zp = ZegoUIKitPrebuilt.create(kitToken);
-      zegoInstanceRef.current = zp;
-      zp.joinRoom({
-        container: zegoContainerRef.current,
-        sharedLinks: [],
-        showPreJoinView: false,
-        turnOnCameraWhenJoining: true,
-        turnOnMicrophoneWhenJoining: true,
-        showLeavingView: false,
-        scenario: { mode: ZegoUIKitPrebuilt.OneONoneCall },
-        onLeaveRoom: () => cleanupCall(),
-      });
-    } catch (err: any) {
-      const msg = err?.message || "Unable to connect call";
-      setCallError(msg);
-      // keep overlay open so user can end manually
+  const createPeerConnection = (targetUserId: string | null) => {
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socketRef.current && incoming?.roomName) {
+        socketRef.current.emit("call:ice", {
+          toUserId: targetUserId,
+          roomName: incoming.roomName,
+          candidate: event.candidate,
+        });
+      }
+    };
+    pc.ontrack = (event) => {
+      const stream = event.streams?.[0];
+      if (stream && remoteVideoRef.current) {
+        remoteStreamRef.current = stream;
+        remoteVideoRef.current.srcObject = stream;
+        remoteVideoRef.current.play().catch(() => undefined);
+      }
+    };
+    pcRef.current = pc;
+    return pc;
+  };
+
+  const startLocalStream = async () => {
+    if (localStreamRef.current) return localStreamRef.current;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localStreamRef.current = stream;
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+      localVideoRef.current.play().catch(() => undefined);
     }
+    return stream;
   };
 
   if (!incoming && !callActive) return null;
@@ -243,10 +301,28 @@ export default function CallListener() {
             <p className="mt-2 text-xs text-red-400">{callError}</p>
           ) : null}
           <div className="relative mt-3 overflow-hidden rounded-xl border border-white/10 bg-black">
-            <div
-              ref={zegoContainerRef}
-              className="relative h-[420px] w-full overflow-hidden rounded-xl bg-black"
-            />
+            <div className="relative h-[420px] w-full overflow-hidden rounded-xl bg-black">
+              <video
+                ref={remoteVideoRef}
+                className="h-full w-full object-cover"
+                playsInline
+                autoPlay
+              />
+              <div className="absolute bottom-3 right-3 h-24 w-32 overflow-hidden rounded-lg border border-white/20 bg-black/80">
+                <video
+                  ref={localVideoRef}
+                  className="h-full w-full object-cover"
+                  playsInline
+                  autoPlay
+                  muted
+                />
+              </div>
+            </div>
+            {callError ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-red-400">
+                {callError}
+              </div>
+            ) : null}
           </div>
           <button
             onClick={endCall}
