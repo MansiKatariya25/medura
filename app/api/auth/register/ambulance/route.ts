@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     if (pwdIssue) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
-    const msg = parsed.error.errors
+    const msg = parsed.error.issues
       .map((e) => {
         const path = Array.isArray(e.path) && e.path.length ? e.path.join(".") : "";
         return path ? `${path}: ${e.message}` : e.message;
