@@ -412,14 +412,14 @@ export default function ProfilePage() {
         <div className="rounded-2xl border border-white/10 bg-[#0f1116] p-6">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center mb-4">
             <div className="flex items-center gap-4">
-              <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-full border border-white/10 bg-[#111317]">
-                  {profileImage ? (
+              <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full border border-white/10 bg-[#111317]">
+                {profileImage ? (
                   <div
                     className="h-full w-full bg-cover bg-center"
                     style={{ backgroundImage: `url(${profileImage})` }}
                   />
                 ) : (
-                  <div className="h-full w-full bg-gradient-to-br from-white/5 to-white/2" />
+                  <div className="h-full w-full bg-linear-to-br from-white/5 to-white/2" />
                 )}
                 <div className="absolute bottom-1 right-1 flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white">
                   <Camera className="h-4 w-4" />

@@ -45,6 +45,14 @@ import type { Doctor } from "@/types/doctor";
 
 type IconComponent = ComponentType<{ className?: string }>;
 
+type NotificationItem = {
+  id: string;
+  title: string;
+  body: string;
+  time: string;
+  read: boolean;
+};
+
 const categoryIconMap: Record<string, IconComponent> = {
   all: HeartPulse,
   neuro: Brain,
@@ -206,6 +214,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [slideProgress, setSlideProgress] = useState(0);
   const [countdown, setCountdown] = useState(10);
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const collapsedCategoryLimit = 6;
   const holdTimer = useRef<number | null>(null);
   const startX = useRef(0);
@@ -221,6 +230,35 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [availabilityEnd, setAvailabilityEnd] = useState("17:00");
   const [savingAvailability, setSavingAvailability] = useState(false);
   const [availabilityMsg, setAvailabilityMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem("medura:notifications");
+    if (raw) {
+      try {
+        setNotifications(JSON.parse(raw) as NotificationItem[]);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => {
+      const raw = window.localStorage.getItem("medura:notifications");
+      if (!raw) return;
+      try {
+        setNotifications(JSON.parse(raw) as NotificationItem[]);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("medura:notifications-update", handler);
+    return () => window.removeEventListener("medura:notifications-update", handler);
+  }, []);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   useEffect(() => {
     let mounted = true;
@@ -490,10 +528,16 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="rounded-full border border-white/20 bg-white/25 p-3 text-white/70"
+              className="relative rounded-full border border-white/20 bg-white/25 p-3 text-white/70"
               aria-label="Notifications"
+              onClick={() => router.push("/notifications")}
             >
               <Bell className="h-4 w-4 text-white" />
+              {unreadCount > 0 ? (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                  {unreadCount}
+                </span>
+              ) : null}
             </button>
           </div>
         </div>
@@ -575,7 +619,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           Array.from({ length: 4 }).map((_, index) => (
             <div
               key={`skeleton-hero-${index}`}
-              className="rounded-[32px] bg-white/5 p-3 pb-4 animate-pulse"
+              className="rounded-4xl bg-white/5 p-3 pb-4 animate-pulse"
             >
               <div className="h-40 rounded-[26px] bg-white/20" />
               <div className="mt-4 space-y-2">
@@ -614,7 +658,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           heroDoctors.map((doctor) => (
             <div
               key={doctor.id}
-              className="rounded-[32px] bg-[#191B24] p-3 pb-4"
+              className="rounded-4xl bg-[#191B24] p-3 pb-4"
             >
               <div className="relative h-40 overflow-hidden rounded-[26px]">
                 <Image
@@ -676,9 +720,9 @@ export default function HomeDashboard({ userName }: { userName: string }) {
             {Array.from({ length: 3 }).map((_, idx) => (
               <div
                 key={`skeleton-list-${idx}`}
-                className="flex gap-4 rounded-[32px] bg-white/10 p-4"
+                className="flex gap-4 rounded-4xl bg-white/10 p-4"
               >
-                <div className="h-24 w-24 rounded-[24px] bg-white/20" />
+                <div className="h-24 w-24 rounded-3xl bg-white/20" />
                 <div className="flex flex-1 flex-col gap-2">
                   <div className="h-4 w-3/4 bg-white/20" />
                   <div className="h-3 w-1/2 bg-white/20" />
@@ -773,9 +817,9 @@ export default function HomeDashboard({ userName }: { userName: string }) {
             {listDoctors.map((doctor) => (
               <div
                 key={doctor.id}
-                className="flex gap-4 rounded-[32px] bg-[#15161E] p-4"
+                className="flex gap-4 rounded-4xl bg-[#15161E] p-4"
               >
-                <div className="relative h-24 w-24 overflow-hidden rounded-[24px] border border-white/5">
+                <div className="relative h-24 w-24 overflow-hidden rounded-3xl border border-white/5">
                   <Image
                     src={doctor.image}
                     alt={doctor.name}
@@ -1235,13 +1279,13 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     if (tab === "chat") {
       return (
         <section className="space-y-4">
-          <div className="space-y-3 rounded-[32px] border border-white/10 bg-[#11121A]/80 p-6">
+          <div className="space-y-3 rounded-4xl border border-white/10 bg-[#11121A]/80 p-6">
             <h2 className="text-xl font-semibold text-white">Chat</h2>
             <p className="text-sm text-white/60">
               Securely message your care team and share documents instantly.
             </p>
           </div>
-          <div className="rounded-[32px] bg-white/5 p-6 text-sm text-white/60">
+          <div className="rounded-4xl bg-white/5 p-6 text-sm text-white/60">
             Conversations will appear here with typing indicators and attachments.
           </div>
         </section>
@@ -1284,7 +1328,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
             ))}
           </div>
 
-          <div className="rounded-[32px] border border-white/10 bg-[#11121A]/80 p-4">
+          <div className="rounded-4xl border border-white/10 bg-[#11121A]/80 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-white">Your Documents</h3>
@@ -1332,7 +1376,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                     key={doc._id}
                     className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3"
                   >
-                    <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-black/30">
+                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-black/30">
                       {doc.mimeType?.startsWith("image/") ? (
                         <img
                           src={doc.url}
@@ -1443,7 +1487,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     }
     return (
       <section className="space-y-4">
-        <div className="rounded-[32px] border border-white/10 bg-[#11121A]/80 p-6">
+        <div className="rounded-4xl border border-white/10 bg-[#11121A]/80 p-6">
           <h2 className="text-xl font-semibold text-white">Profile</h2>
           <p className="text-sm text-white/60">
             Adjust your notifications, payment methods, and insurance details.
@@ -1462,7 +1506,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
             </button>
           </div>
         </div>
-        <div className="rounded-[24px] border border-white/10 bg-[#15161E] p-4 text-sm text-white/70">
+        <div className="rounded-3xl border border-white/10 bg-[#15161E] p-4 text-sm text-white/70">
           Profile summary will appear here.
         </div>
       </section>
@@ -1605,12 +1649,21 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 End
               </button>
             </div>
+<<<<<<< HEAD
             <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
               <video
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
                 className="h-[360px] w-full object-cover"
+=======
+            <div className="overflow-hidden rounded-xl border border-white/10">
+              <iframe
+                title="Call"
+                src={`https://meet.jit.si/${videoCallRoom}`}
+                className="h-105 w-full bg-black"
+                allow="camera; microphone; fullscreen; display-capture"
+>>>>>>> dbda97fb4d5d09bcdbf4f867e1c2ad559b89d448
               />
               <div className="absolute bottom-4 right-4 h-28 w-40 overflow-hidden rounded-xl border border-white/20 bg-black">
                 <video
@@ -1628,11 +1681,11 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       )}
 
       <nav
-        className={`fixed bottom-6 left-1/2 z-20 w-[90%] max-w-[420px] -translate-x-1/2 rounded-full px-6 py-4 text-white shadow-[0_15px_35px_rgba(0,0,0,0.4)] lg:max-w-lg ${callState === "idle"
+        className={`fixed bottom-6 left-1/2 z-20 w-[90%] max-w-105 -translate-x-1/2 rounded-full px-6 py-4 text-white shadow-[0_15px_35px_rgba(0,0,0,0.4)] lg:max-w-lg ${callState === "idle"
           ? "bg-[#151621]"
           : callState === "calling"
-            ? "bg-gradient-to-r from-[#0b2d5c] via-[#1c5aa7] to-[#2d7be8]"
-            : "bg-gradient-to-r from-[#4b141a] via-[#7a0f1d] to-[#32090d]"
+            ? "bg-linear-to-r from-[#0b2d5c] via-[#1c5aa7] to-[#2d7be8]"
+            : "bg-linear-to-r from-[#4b141a] via-[#7a0f1d] to-[#32090d]"
           }`}
       >
         {callState === "idle" ? (
