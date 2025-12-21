@@ -54,6 +54,7 @@ export default function CommunityDetailPage() {
   const [joinedIds, setJoinedIds] = useState<string[]>([]);
   const [messages, setMessages] = useState<CommunityMessage[]>([]);
   const [composer, setComposer] = useState("");
+  const [onlineCount, setOnlineCount] = useState(0);
   const [wsStatus, setWsStatus] = useState<WsStatus>("connecting");
   const [showInfo, setShowInfo] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -81,6 +82,7 @@ export default function CommunityDetailPage() {
   const scrollRafRef = useRef<number | null>(null);
   const [currentDateLabel, setCurrentDateLabel] = useState("Today");
   const sentMessageIdsRef = useRef<Set<string>>(new Set());
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentUserName = session?.user?.name || "You";
 
@@ -486,8 +488,10 @@ export default function CommunityDetailPage() {
 
   const headerSubtitle = useMemo(() => {
     if (!community) return "";
-    return `${community.members ?? 0} members`;
-  }, [community]);
+    const membersPart = `${community.members ?? 0} members`;
+    const onlinePart = `${onlineCount} online`;
+    return `${onlinePart} • ${membersPart}`;
+  }, [community, onlineCount]);
 
   const visibleMessages = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
