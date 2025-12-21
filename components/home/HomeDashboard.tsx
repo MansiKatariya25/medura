@@ -24,6 +24,7 @@ import {
   Video,
   Plus,
   Loader2,
+  Trash,
 } from "lucide-react";
 
 import { doctors as seedDoctors } from "@/data/doctors";
@@ -144,6 +145,30 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+
+  const formatSummary = (text?: string) => {
+    if (!text) return null;
+    return text
+      .split(/\n+/)
+      .filter(Boolean)
+      .map((line, idx) => {
+        const [label, ...rest] = line.split(":");
+        if (rest.length === 0) {
+          return (
+            <p key={`sum-${idx}`} className="leading-relaxed">
+              {line}
+            </p>
+          );
+        }
+        return (
+          <p key={`sum-${idx}`} className="leading-relaxed">
+            <span className="font-semibold text-white">{label.trim()}:</span>{" "}
+            <span className="text-white/70">{rest.join(":").trim()}</span>
+          </p>
+        );
+      });
+  };
   const [displayedTab, setDisplayedTab] = useState("home");
   const [avatarImage, setAvatarImage] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
@@ -790,6 +815,27 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     }
   };
 
+  const handleDeleteDocument = async (id: string) => {
+    setDocError(null);
+    setDeletingDocId(id);
+    try {
+      const res = await fetch("/api/medkey/documents", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Delete failed");
+      }
+      setDocs((prev) => prev.filter((d) => String(d._id) !== String(id)));
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
   const renderTabContent = (tab: string) => {
     if (tab === "home") return renderHomeSections();
     if (tab === "chat") {
@@ -824,6 +870,25 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               Update stats
             </button>
           ) : null}
+
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: "Blood", value: medStats.bloodGroup || "—", color: "text-red-400 bg-red-400/10" },
+              { label: "Height", value: medStats.height || "—", color: "text-blue-400 bg-blue-400/10" },
+              { label: "Weight", value: medStats.weight || "—", color: "text-orange-400 bg-orange-400/10" },
+              { label: "Allergies", value: medStats.allergies || "—", color: "text-green-400 bg-green-400/10" },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className={`flex flex-col items-center justify-center rounded-2xl border border-white/5 p-3 ${stat.color}`}
+              >
+                <p className="text-[10px] font-medium uppercase tracking-wider opacity-70">
+                  {stat.label}
+                </p>
+                <p className="text-sm font-bold">{stat.value}</p>
+              </div>
+            ))}
+          </div>
 
           <div className="rounded-[32px] border border-white/10 bg-[#11121A]/80 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -871,74 +936,54 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 docs.map((doc) => (
                   <div
                     key={doc._id}
-                    className="flex items-start justify-between rounded-2xl border border-white/10 bg-white/5 p-3"
+                    className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3"
                   >
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        {doc.title}
-                      </p>
-                      <p className="mt-2 text-sm text-white/60">
-                        {doc.summary || "No summary"}
-                      </p>
+                    <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-black/30">
+                      {doc.mimeType?.startsWith("image/") ? (
+                        <img
+                          src={doc.url}
+                          alt={doc.summaryTitle || doc.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xs text-white/60">
+                          PDF
+                        </div>
+                      )}
                     </div>
-                    <a
-                      href={doc.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
-                    >
-                      View
-                    </a>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold text-white leading-tight">
+                          {doc.summaryTitle || "Document"}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={doc.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
+                          >
+                            View
+                          </a>
+                          <button
+                            onClick={() => handleDeleteDocument(doc._id)}
+                            disabled={deletingDocId === doc._id}
+                            className="rounded-full border border-white/10 p-1 text-white/70 hover:bg-white/10 disabled:opacity-50"
+                            aria-label="Delete document"
+                          >
+                            <Trash className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-sm text-white/60 space-y-1">
+                        {formatSummary(doc.summary) || (
+                          <p className="leading-relaxed">No summary</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))
               )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { label: "Blood", value: medStats.bloodGroup || "—", color: "text-red-400 bg-red-400/10" },
-              { label: "Height", value: medStats.height || "—", color: "text-blue-400 bg-blue-400/10" },
-              { label: "Weight", value: medStats.weight || "—", color: "text-orange-400 bg-orange-400/10" },
-              { label: "Allergies", value: medStats.allergies || "—", color: "text-green-400 bg-green-400/10" },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className={`flex flex-col items-center justify-center rounded-2xl border border-white/5 p-3 ${stat.color}`}
-              >
-                <p className="text-[10px] font-medium uppercase tracking-wider opacity-70">
-                  {stat.label}
-                </p>
-                <p className="text-sm font-bold">{stat.value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-[32px] border border-white/10 bg-[#11121A]/80 p-6 md:flex md:items-center md:justify-between">
-            <div className="flex flex-col md:w-1/2">
-              <h2 className="text-xl font-semibold text-white">Records Vault</h2>
-              <p className="text-sm text-white/60">
-                Store and access your medical records in one place.
-              </p>
-            </div>
-            <div className="mt-4 flex w-full flex-col gap-3 md:mt-0 md:w-1/2 md:flex-row md:items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                <input
-                  placeholder="Search records..."
-                  value={recordSearchQuery}
-                  onChange={(e) => setRecordSearchQuery(e.target.value)}
-                  className="w-full rounded-xl bg-white/5 py-3 pl-9 pr-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-white/20"
-                />
-              </div>
-              <button
-                onClick={() => docInputRef.current?.click()}
-                className="flex items-center justify-center gap-2 rounded-xl bg-[#4D7CFF] px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-              >
-                <Plus className="h-4 w-4" />
-                <span className="hidden md:inline">Upload</span>
-                <span className="md:hidden">Upload New</span>
-              </button>
             </div>
           </div>
           <input
