@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { doctors } from "@/data/doctors";
 import { LogOut, Loader2, Camera, ArrowLeft, Pencil } from "lucide-react";
+import Button from "@/components/ui/Button";
+import Script from "next/script";
 
 type Profile = {
   fullName?: string;
@@ -15,6 +17,9 @@ type Profile = {
   specialization?: string;
   location?: string | null;
   role?: string | null;
+  walletBalance?: number;
+  earnings?: number;
+  pricePerMinute?: number;
 };
 
 type Appointment = {
@@ -51,6 +56,10 @@ export default function ProfilePage() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [price, setPrice] = useState<string>("");
+  const [priceMsg, setPriceMsg] = useState<string | null>(null);
+  const [topupAmount, setTopupAmount] = useState<string>("500");
+  const [topupLoading, setTopupLoading] = useState(false);
   const imageInput = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -78,6 +87,9 @@ export default function ProfilePage() {
                   pJson.profile.image,
                 );
               }
+            }
+            if (pJson.profile.pricePerMinute !== undefined && pJson.profile.pricePerMinute !== null) {
+              setPrice(String(pJson.profile.pricePerMinute));
             }
           }
         }
@@ -153,6 +165,97 @@ export default function ProfilePage() {
     }
   };
 
+  const loadRazorpay = () =>
+    new Promise<boolean>((resolve) => {
+      if (typeof window === "undefined") return resolve(false);
+      if (window.Razorpay) return resolve(true);
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+
+  const handleTopup = async () => {
+    setPriceMsg(null);
+    setTopupLoading(true);
+    try {
+      const key = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      const ok = await loadRazorpay();
+      if (!ok || !key) {
+        setPriceMsg("Razorpay not available");
+        return;
+      }
+      const amount = Number(topupAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setPriceMsg("Enter a valid amount");
+        return;
+      }
+      const orderRes = await fetch("/api/wallet/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
+      });
+      const orderJson = await orderRes.json();
+      if (!orderRes.ok || !orderJson?.order?.id) {
+        setPriceMsg(orderJson?.error || "Could not create order");
+        return;
+      }
+      const options = {
+        key,
+        amount: orderJson.order.amount,
+        currency: "INR",
+        order_id: orderJson.order.id,
+        name: "Medura",
+        description: "Wallet top-up",
+        handler: async () => {
+          await fetch("/api/wallet/credit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ amount }),
+          });
+          setPriceMsg("Wallet updated");
+        },
+        prefill: {
+          name: profile?.fullName || "",
+          email: profile?.email || "",
+        },
+        theme: { color: "#4D7CFF" },
+      };
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch {
+      setPriceMsg("Payment failed");
+    } finally {
+      setTopupLoading(false);
+    }
+  };
+
+  const savePrice = async () => {
+    setPriceMsg(null);
+    const num = Number(price);
+    if (!Number.isFinite(num) || num < 0) {
+      setPriceMsg("Enter a valid price per minute.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/doctor/price", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pricePerMinute: num }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setPriceMsg(j?.error || "Failed to save price");
+        return;
+      }
+      setPriceMsg("Price updated");
+    } catch {
+      setPriceMsg("Failed to save price");
+    }
+  };
+
   const saveProfile = async () => {
     setSaving(true);
     try {
@@ -190,35 +293,35 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-[#05060B] px-4 py-6 text-white lg:px-10 lg:py-10">
       <div className="mx-auto w-full max-w-5xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.back()}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white/70 transition hover:bg-white/10"
-              aria-label="Go back"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div>
-              <h1 className="text-xl font-semibold">Profile</h1>
-              <p className="text-sm text-white/60">
-                Manage your account details
-              </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => router.back()}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white/70 transition hover:bg-white/10"
+                aria-label="Go back"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div>
+                <h1 className="text-xl font-semibold">Profile</h1>
+                <p className="text-sm text-white/60">
+                  Manage your account details
+                </p>
+              </div>
             </div>
-          </div>
-          <button
-            onClick={() => signOut({ callbackUrl: "/" })}
-            className="flex items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 text-white/80 transition hover:bg-white/10"
-            aria-label="Log out"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+            <button
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="flex items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 text-white/80 transition hover:bg-white/10"
+              aria-label="Log out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-[#0f1116] p-6">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
             <div className="flex items-center gap-4">
               <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-full border border-white/10 bg-[#111317]">
-                {profileImage ? (
+                  {profileImage ? (
                   <div
                     className="h-full w-full bg-cover bg-center"
                     style={{ backgroundImage: `url(${profileImage})` }}
@@ -273,6 +376,57 @@ export default function ProfilePage() {
               </button>
             </div>
           </div>
+
+          {/* Doctor pricing / balances */}
+          {profile?.role === "doctor" ? (
+            <div className="rounded-2xl border border-white/10 bg-[#0f1116] p-4 text-white">
+              <h3 className="text-lg font-semibold">Video Call Pricing</h3>
+              <p className="text-sm text-white/60">
+                Set your price per minute for video consultations.
+              </p>
+              <div className="mt-3 flex items-center gap-3">
+                <input
+                  type="number"
+                  min="0"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className="w-40 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none"
+                  placeholder="₹/min"
+                />
+                <Button onClick={savePrice}>Save price</Button>
+              </div>
+              {priceMsg ? (
+                <p className="mt-2 text-sm text-white/70">{priceMsg}</p>
+              ) : null}
+              <div className="mt-3 text-sm text-white/60">
+                Earnings: ₹{profile.earnings ?? 0}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-[#0f1116] p-4 text-white space-y-3">
+              <h3 className="text-lg font-semibold">Wallet</h3>
+              <p className="text-sm text-white/60">
+                Balance available for video consultations.
+              </p>
+              <div className="text-2xl font-bold">₹{profile?.walletBalance ?? 0}</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  value={topupAmount}
+                  onChange={(e) => setTopupAmount(e.target.value)}
+                  className="w-32 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none"
+                  placeholder="Amount"
+                />
+                <Button onClick={handleTopup} disabled={topupLoading}>
+                  {topupLoading ? "Processing..." : "Add money"}
+                </Button>
+              </div>
+              {priceMsg ? (
+                <p className="text-sm text-white/70">{priceMsg}</p>
+              ) : null}
+            </div>
+          )}
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl border border-white/10 bg-[#0b0d13] p-4">

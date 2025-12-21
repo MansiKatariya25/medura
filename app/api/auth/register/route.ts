@@ -65,6 +65,7 @@ export async function POST(req: Request) {
     state: parsed.data.state,
     location: parsed.data.location ?? null,
     meduraId,
+    walletBalance: 500,
     communityIds: [],
     profileComplete: true,
     emailVerified: null,
