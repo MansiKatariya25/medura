@@ -168,7 +168,7 @@ export default function ProfilePage() {
   const loadRazorpay = () =>
     new Promise<boolean>((resolve) => {
       if (typeof window === "undefined") return resolve(false);
-      if (window.Razorpay) return resolve(true);
+      if ((window as any).Razorpay) return resolve(true);
       const script = document.createElement("script");
       script.src = "https://checkout.razorpay.com/v1/checkout.js";
       script.async = true;

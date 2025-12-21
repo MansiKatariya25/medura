@@ -1338,7 +1338,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               <iframe
                 title="Call"
                 src={`https://meet.jit.si/${videoCallRoom}`}
-                className="h-[420px] w-full bg-black"
+                className="h-105 w-full bg-black"
                 allow="camera; microphone; fullscreen; display-capture"
               />
             </div>
