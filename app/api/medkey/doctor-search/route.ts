@@ -40,19 +40,24 @@ export async function GET(req: Request) {
   const query = (searchParams.get("q") || "").trim();
 
   if (patientId) {
-    const patientKey = ObjectId.isValid(patientId)
+    const patientObjectId = ObjectId.isValid(patientId)
       ? new ObjectId(patientId)
-      : patientId;
-    const filter = ObjectId.isValid(patientId)
-      ? { _id: new ObjectId(patientId) }
-      : { _id: patientId };
+      : null;
+    const filter =
+      patientObjectId !== null
+        ? { _id: patientObjectId }
+        : { meduraId: patientId };
+
     const user = await db.collection("users").findOne(filter);
     if (!user) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const documents = await db
       .collection("documents")
-      .find({ userId: ObjectId.isValid(patientId) ? String(patientId) : patientId })
+      .find({
+        userId:
+          patientObjectId !== null ? String(patientObjectId) : patientId,
+      })
       .sort({ createdAt: -1 })
       .limit(50)
       .toArray();
