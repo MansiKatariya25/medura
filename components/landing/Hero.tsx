@@ -134,8 +134,16 @@ export default function Hero() {
               {[1, 2, 3, 4].map((i) => (
                 <div
                   key={i}
-                  className="h-8 w-8 rounded-full border border-black bg-gray-800 ring-2 ring-[#091E42]"
-                />
+                  className="h-8! w-8! rounded-full border border-black bg-gray-800 ring-2 ring-[#091E42] overflow-hidden"
+                >
+                  <Image src="https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg" alt="Medical Emergency Background"
+                    width={32}
+                    height={32}
+                    sizes="100vw"
+                    unoptimized
+                    className="object-cover"
+                  />
+                </div>
               ))}
             </div>
             <p>Trusted by 10k+ patients</p>
