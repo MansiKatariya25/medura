@@ -759,7 +759,7 @@ export default function CommunityDetailPage() {
                   (community?.name || "").slice(0, 2).toUpperCase()
                 )}
               </div>
-              <h2 className="mt-4 text-xl font-semibold">{community.name}</h2>
+              <h2 className="mt-4 text-xl font-semibold">{community?.name || "Community"}</h2>
               <p className="mt-1 text-sm text-white/50">
                 {community.members ?? 0} members
               </p>
