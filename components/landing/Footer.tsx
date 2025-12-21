@@ -6,7 +6,8 @@ export default function Footer() {
         <footer className="border-t border-white/10 bg-black/40 py-12 px-4 backdrop-blur-xl">
             <div className="container mx-auto flex flex-col items-center justify-between gap-6 max-w-6xl md:flex-row">
                 <div className="flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-blue-500" />
+                    {/* <Activity className="h-5 w-5 text-blue-500" /> */}
+                    <img src="/medura.png" alt="Medura Logo" className="h-5 w-5 text-blue-500" />
                     <span className="font-bold text-white">Medura</span>
                 </div>
 

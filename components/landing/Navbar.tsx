@@ -19,7 +19,8 @@ export default function Navbar() {
         {/* Logo */}
         <Link href="/landing" className="flex items-center gap-2">
           <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600/20 text-blue-500">
-            <Activity className="h-5 w-5 animate-pulse" />
+            {/* <Activity className="h-5 w-5 animate-pulse" /> */}
+            <img src="/medura.png" alt="Medura Logo" className="h-5 w-5 animate-pulse" />
             <div className="absolute inset-0 animate-ping rounded-lg bg-blue-500/20" />
           </div>
           <span className="text-xl font-bold tracking-tight text-white font-[family-name:var(--font-dm-sans)]">

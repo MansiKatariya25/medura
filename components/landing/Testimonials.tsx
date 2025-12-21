@@ -67,6 +67,8 @@ export default function Testimonials() {
                                         src={t.image}
                                         alt={t.author}
                                         fill
+                                        sizes="40px"
+                                        unoptimized
                                         className="object-cover"
                                     />
                                 </div>
