@@ -16,6 +16,8 @@ app.prepare().then(() => {
     },
   });
 
+  const userSockets = new Map();
+
   const emitOnlineCount = async (roomId) => {
     const sockets = await io.in(roomId).allSockets();
     io.to(roomId).emit("online", { groupId: roomId, count: sockets.size });
@@ -23,9 +25,22 @@ app.prepare().then(() => {
 
   io.on("connection", (socket) => {
     socket.data.userName = "anon";
+    socket.data.userId = null;
 
     socket.on("identify", ({ userName }) => {
       socket.data.userName = userName || "anon";
+      if (socket.data.userId) {
+        userSockets.set(socket.data.userId, socket.id);
+      }
+    });
+
+    socket.on("identify-user", ({ userId, userName, role }) => {
+      socket.data.userId = userId || null;
+      socket.data.userName = userName || "anon";
+      socket.data.role = role || null;
+      if (userId) {
+        userSockets.set(userId, socket.id);
+      }
     });
 
     socket.on("join", async ({ groupId }) => {
@@ -62,6 +77,39 @@ app.prepare().then(() => {
       });
     });
 
+    socket.on("call:invite", ({ toUserId, roomName, pricePerMinute, callerName, callerId }) => {
+      const target = toUserId ? userSockets.get(toUserId) : null;
+      if (target) {
+        io.to(target).emit("call:incoming", {
+          roomName,
+          pricePerMinute,
+          callerName: callerName || socket.data.userName || "Caller",
+          callerId: callerId || socket.data.userId || null,
+        });
+      }
+    });
+
+    socket.on("call:answer", ({ toUserId, roomName }) => {
+      const target = toUserId ? userSockets.get(toUserId) : null;
+      if (target) {
+        io.to(target).emit("call:answered", { roomName });
+      }
+    });
+
+    socket.on("call:decline", ({ toUserId, roomName }) => {
+      const target = toUserId ? userSockets.get(toUserId) : null;
+      if (target) {
+        io.to(target).emit("call:declined", { roomName });
+      }
+    });
+
+    socket.on("call:end", ({ toUserId, roomName }) => {
+      const target = toUserId ? userSockets.get(toUserId) : null;
+      if (target) {
+        io.to(target).emit("call:ended", { roomName });
+      }
+    });
+
     socket.on("disconnecting", () => {
       const rooms = Array.from(socket.rooms).filter((roomId) => roomId !== socket.id);
       rooms.forEach((roomId) => {
@@ -72,6 +120,9 @@ app.prepare().then(() => {
         });
       });
       rooms.forEach((roomId) => emitOnlineCount(roomId));
+      if (socket.data.userId) {
+        userSockets.delete(socket.data.userId);
+      }
     });
   });
 

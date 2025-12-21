@@ -20,6 +20,7 @@
     "next-auth": "^4.24.13",
     "olamaps-web-sdk": "^1.1.4",
     "qrcode.react": "^4.2.0",
+    "razorpay": "^2.9.6",
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "simple-peer": "^9.11.1",

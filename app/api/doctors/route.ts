@@ -67,6 +67,7 @@ export async function GET(req: Request) {
       const reviews = toString(doc.reviews);
       const image = toString(doc.image) || toString(doc.avatarUrl) || fallbackImage;
       const cloudinaryId = toString(doc.cloudinaryId) || undefined;
+      const pricePerMinute = toNumber(doc.pricePerMinute, 0);
 
       return {
         id,
@@ -78,6 +79,7 @@ export async function GET(req: Request) {
         reviews: reviews || undefined,
         image,
         cloudinaryId,
+        pricePerMinute,
       };
     });
 

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
 import {
@@ -26,6 +27,7 @@ import {
   Loader2,
   Trash,
 } from "lucide-react";
+import { io, type Socket } from "socket.io-client";
 
 import { doctors as seedDoctors } from "@/data/doctors";
 import MedKeyCard from "@/components/home/MedKeyCard";
@@ -127,6 +129,7 @@ function RoundedIconButton({
 }
 
 export default function HomeDashboard({ userName }: { userName: string }) {
+  const { data: session } = useSession();
   const locationLabel = useLocationLabel();
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -154,6 +157,13 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [docError, setDocError] = useState<string | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const [videoCallState, setVideoCallState] = useState<"idle" | "incoming" | "outgoing" | "active">("idle");
+  const [videoCallRoom, setVideoCallRoom] = useState<string | null>(null);
+  const [callPartner, setCallPartner] = useState<{ id?: string | null; name?: string | null; price?: number | null }>({});
+  const [videoCallTimer, setVideoCallTimer] = useState(0);
+  const videoCallIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const callStartRef = useRef<number | null>(null);
 
   const formatSummary = (text?: string) => {
     if (!text) return null;
@@ -705,7 +715,10 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               >
                 Book Now
               </button>
-              <RoundedIconButton className="w-12 flex-none border border-white/15 bg-transparent">
+              <RoundedIconButton
+                className="w-12 flex-none border border-white/15 bg-transparent"
+                onClick={() => featuredDoctor && handleStartCall(featuredDoctor as Doctor)}
+              >
                 <Video className="h-5 w-5" />
               </RoundedIconButton>
             </div>
@@ -731,6 +744,9 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                     {doctor.name}
                   </p>
                   <p className="text-sm text-white/60">{doctor.specialty}</p>
+                  <p className="text-xs text-white/50">
+                    ₹{(doctor as any).pricePerMinute || 0}/min
+                  </p>
                   <div className="mt-1 flex items-center gap-1 text-sm text-white/70">
                     <Star className="h-4 w-4 fill-[#F9D655] text-[#F9D655]" />
                     {doctor.rating.toFixed(1)}
@@ -745,8 +761,8 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                     >
                       Book Now
                     </button>
-                    <RoundedIconButton>
-                      <FileText className="h-4 w-4" />
+                    <RoundedIconButton onClick={() => handleStartCall(doctor)}>
+                      <Video className="h-4 w-4" />
                     </RoundedIconButton>
                   </div>
                 </div>
@@ -807,6 +823,51 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       controller.abort();
     };
   }, [selectedTab, recordSearchQuery]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const socket = io({
+      path: "/socket.io",
+      withCredentials: true,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+    });
+    socketRef.current = socket;
+    socket.on("connect", () => {
+      socket.emit("identify-user", {
+        userId: session?.user?.id || null,
+        userName: session?.user?.name || userName || "User",
+        role: session?.user ? (session.user as any).role || null : null,
+      });
+    });
+    socket.on("call:incoming", (payload: any) => {
+      setVideoCallState("incoming");
+      setVideoCallRoom(payload.roomName);
+      setCallPartner({ id: payload.callerId, name: payload.callerName, price: payload.pricePerMinute });
+    });
+    socket.on("call:answered", (payload: any) => {
+      if (payload.roomName === videoCallRoom) {
+        setVideoCallState("active");
+        startCallTimer();
+      }
+    });
+    socket.on("call:declined", (payload: any) => {
+      if (payload.roomName === videoCallRoom) {
+        resetCall();
+      }
+    });
+    socket.on("call:ended", (payload: any) => {
+      if (payload.roomName === videoCallRoom) {
+        resetCall();
+      }
+    });
+    return () => {
+      if (videoCallIntervalRef.current) clearInterval(videoCallIntervalRef.current);
+      socket.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, userName]);
 
   const handleUploadDocument = async (file: File) => {
     setDocError(null);
@@ -878,6 +939,98 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     } finally {
       setDeletingDocId(null);
     }
+  };
+
+  const startCallTimer = () => {
+    if (videoCallIntervalRef.current) clearInterval(videoCallIntervalRef.current);
+    setVideoCallTimer(0);
+    callStartRef.current = Date.now();
+    videoCallIntervalRef.current = setInterval(() => {
+      setVideoCallTimer((prev) => prev + 1);
+    }, 1000);
+  };
+
+  const resetCall = () => {
+    if (videoCallIntervalRef.current) clearInterval(videoCallIntervalRef.current);
+    setVideoCallTimer(0);
+    setVideoCallRoom(null);
+    setCallPartner({});
+    setVideoCallState("idle");
+    callStartRef.current = null;
+  };
+
+  const handleStartCall = (doctor: Doctor) => {
+    const roomName = `medura-${doctor.id}-${Date.now()}`;
+    setVideoCallRoom(roomName);
+    setCallPartner({ id: doctor.id, name: doctor.name, price: (doctor as any).pricePerMinute || 0 });
+    setVideoCallState("outgoing");
+
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("call:invite", {
+        toUserId: doctor.id,
+        roomName,
+        pricePerMinute: (doctor as any).pricePerMinute || 0,
+        callerName: session?.user?.name || userName || "User",
+        callerId: session?.user?.id || null,
+      });
+    } else {
+      // attempt a reconnect once, then emit after open
+      socketRef.current?.connect();
+      socketRef.current?.once("connect", () => {
+        socketRef.current?.emit("call:invite", {
+          toUserId: doctor.id,
+          roomName,
+          pricePerMinute: (doctor as any).pricePerMinute || 0,
+          callerName: session?.user?.name || userName || "User",
+          callerId: session?.user?.id || null,
+        });
+      });
+    }
+  };
+
+  const handleAcceptCall = () => {
+    if (!socketRef.current || !videoCallRoom) return;
+    socketRef.current.emit("call:answer", {
+      toUserId: callPartner.id,
+      roomName: videoCallRoom,
+    });
+    setVideoCallState("active");
+    startCallTimer();
+  };
+
+  const handleDeclineCall = () => {
+    if (!socketRef.current || !videoCallRoom) return;
+    socketRef.current.emit("call:decline", {
+      toUserId: callPartner.id,
+      roomName: videoCallRoom,
+    });
+    resetCall();
+  };
+
+  const handleEndCall = () => {
+    const durationSec =
+      callStartRef.current !== null
+        ? Math.max(1, Math.floor((Date.now() - callStartRef.current) / 1000))
+        : videoCallTimer;
+    const price = callPartner.price || 0;
+    if (price > 0 && callPartner.id) {
+      fetch("/api/calls/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          doctorId: callPartner.id,
+          durationSec,
+          pricePerMinute: price,
+        }),
+      }).catch(() => null);
+    }
+    if (socketRef.current && videoCallRoom) {
+      socketRef.current.emit("call:end", {
+        toUserId: callPartner.id,
+        roomName: videoCallRoom,
+      });
+    }
+    resetCall();
   };
 
   const renderTabContent = (tab: string) => {
@@ -1129,6 +1282,69 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           {renderTabContent(displayedTab)}
         </div>
       </div>
+
+      {/* Call modals */}
+      {videoCallState === "incoming" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-[#0f1116] p-5 text-white">
+            <h3 className="text-lg font-semibold">Incoming call</h3>
+            <p className="mt-2 text-sm text-white/70">
+              {callPartner.name || "Caller"} {callPartner.price ? `• ₹${callPartner.price}/min` : ""}
+            </p>
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={handleDeclineCall}
+                className="flex-1 rounded-full border border-white/15 bg-white/5 py-2 text-sm text-white hover:bg-white/10"
+              >
+                Decline
+              </button>
+              <button
+                onClick={handleAcceptCall}
+                className="flex-1 rounded-full bg-[#4D7CFF] py-2 text-sm font-semibold text-white"
+              >
+                Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(videoCallState === "outgoing" || videoCallState === "active") && videoCallRoom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-2xl space-y-3 rounded-2xl bg-[#0f1116] p-4 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-white/60">
+                  {videoCallState === "outgoing" ? "Connecting..." : "In call"}
+                </p>
+                <p className="text-lg font-semibold">
+                  {callPartner.name || "Doctor"} {callPartner.price ? `• ₹${callPartner.price}/min` : ""}
+                </p>
+                {videoCallState === "active" ? (
+                  <p className="text-xs text-white/50">
+                    Duration: {Math.floor(videoCallTimer / 60).toString().padStart(2, "0")}:
+                    {(videoCallTimer % 60).toString().padStart(2, "0")}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                onClick={handleEndCall}
+                className="rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white"
+              >
+                End
+              </button>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-white/10">
+              <iframe
+                title="Call"
+                src={`https://meet.jit.si/${videoCallRoom}`}
+                className="h-[420px] w-full bg-black"
+                allow="camera; microphone; fullscreen; display-capture"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <nav
         className={`fixed bottom-6 left-1/2 z-20 w-[90%] max-w-105 -translate-x-1/2 rounded-full px-6 py-4 text-white shadow-[0_15px_35px_rgba(0,0,0,0.4)] lg:max-w-lg ${callState === "idle"

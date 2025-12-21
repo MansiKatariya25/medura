@@ -65,6 +65,7 @@ export async function POST(req: Request) {
     passwordHash,
     location: parsed.data.location ?? null,
     communityIds: [],
+    walletBalance: 0,
     profileComplete: true,
     createdAt: new Date(),
     updatedAt: new Date(),

@@ -13,6 +13,9 @@ export const doctorSchema = z.object({
   image: z.string().url(),
   cloudinaryId: z.string().optional(),
   location: z.string().optional(),
+  pricePerMinute: z.number().optional(),
+  walletBalance: z.number().optional(),
+  earnings: z.number().optional(),
   createdAt: z.coerce.date().optional(),
   updatedAt: z.coerce.date().optional(),
 });

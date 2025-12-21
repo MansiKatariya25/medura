@@ -37,6 +37,8 @@ export async function POST(req: Request) {
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 12);
 
+  const pricePerMinute = Number(parsed.data.specialization) ? Number(parsed.data.specialization) : 0; // placeholder if numeric passed
+
   const userDoc = {
     role: "doctor",
     name: parsed.data.fullName,
@@ -48,6 +50,8 @@ export async function POST(req: Request) {
     passwordHash,
     location: parsed.data.location ?? null,
     communityIds: [],
+    walletBalance: 0,
+    earnings: 0,
     profileComplete: true,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -68,6 +72,7 @@ export async function POST(req: Request) {
     reviews: "",
     cloudinaryId: null,
     location: parsed.data.location ?? null,
+    pricePerMinute: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
   });
