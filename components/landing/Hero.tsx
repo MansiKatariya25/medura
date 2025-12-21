@@ -42,6 +42,8 @@ export default function Hero() {
           src="https://res.cloudinary.com/dr3hkbpmr/image/upload/v1766314194/medura/landing/landing-01.jpg"
           alt="Medical Emergency Background"
           fill
+          sizes="100vw"
+          // unoptimized
           className="object-cover"
           priority
         />
@@ -66,7 +68,7 @@ export default function Hero() {
             Live in 20+ Cities
           </motion.div>
 
-          <h1 className="text-5xl font-extrabold tracking-tight text-white sm:text-6xl md:text-7xl font-[family-name:var(--font-dm-sans)]">
+          <h1 className="text-5xl font-extrabold tracking-tight text-white sm:text-6xl md:text-7xl font-(family-name:--font-dm-sans)">
             <span className="block overflow-hidden">
               <motion.span
                 initial={{ y: 100 }}
@@ -150,7 +152,7 @@ export default function Hero() {
           className="relative mx-auto w-full max-w-[320px] lg:mr-0 perspective-1000"
         >
           {/* Simple Phone Mockup Shape */}
-          <div className="relative z-10 mx-auto aspect-[9/19] w-full max-w-[300px] overflow-hidden rounded-[40px] border-8 border-gray-800 bg-black shadow-2xl shadow-blue-900/40 transition-shadow duration-500 hover:shadow-blue-500/50">
+          <div className="relative z-10 mx-auto aspect-9/19 w-full max-w-75 overflow-hidden rounded-[40px] border-8 border-gray-800 bg-black shadow-2xl shadow-blue-900/40 transition-shadow duration-500 hover:shadow-blue-500/50">
             {/* Screen Content */}
             <div className="flex h-full w-full flex-col bg-[#091E42] p-4 text-white">
               <div className="flex items-center justify-between opacity-50">
@@ -168,7 +170,7 @@ export default function Hero() {
                     <Phone className="h-8 w-8 fill-current" />
                   </div>
                 </div>
-                <h3 className="mt-4 text-center text-xl font-bold font-[family-name:var(--font-dm-sans)]">SOS Mode</h3>
+                <h3 className="mt-4 text-center text-xl font-bold font-(family-name:--font-dm-sans)">SOS Mode</h3>
                 <p className="text-center text-xs text-white/50">Slide below to call ambulance</p>
               </div>
 
@@ -184,7 +186,7 @@ export default function Hero() {
             </div>
 
             {/* Glossy Overlay */}
-            <div className="pointer-events-none absolute inset-0 bg-linear-to-tr from-white/10 to-transparent opacity-50 rounded-[32px]" />
+            <div className="pointer-events-none absolute inset-0 bg-linear-to-tr from-white/10 to-transparent opacity-50 rounded-4xl" />
           </div>
 
           {/* Decorative Elements around phone */}
