@@ -168,7 +168,7 @@ export default function CommunityDetailPage() {
       (pos) => {
         setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       },
-      () => {},
+      () => { },
       { enableHighAccuracy: true, timeout: 6000 }
     );
   }, []);
@@ -178,8 +178,7 @@ export default function CommunityDetailPage() {
     if (!id) return;
     const url =
       process.env.NEXT_PUBLIC_WS_URL ||
-      `${window.location.protocol === "https:" ? "wss" : "ws"}://${
-        window.location.host
+      `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host
       }/ws/community`;
     try {
       const ws = new WebSocket(url);
@@ -206,7 +205,7 @@ export default function CommunityDetailPage() {
       ws.addEventListener("message", (event) => {
         try {
           const payload = JSON.parse(event.data) as {
-            messageId: boolean;
+            messageId: string;
             type?: string;
             groupId?: string;
             from?: string;
@@ -215,28 +214,28 @@ export default function CommunityDetailPage() {
             authorId?: string | null;
           };
           if (payload.groupId !== id) return;
-            if (payload.type === "message" && payload.text) {
-              if (payload.messageId && sentMessageIdsRef.current.has(payload.messageId)) {
-                return;
-              }
-              if (payload.from && payload.from === currentUserName) {
-                return;
-              }
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `msg-${Date.now()}`,
-                  communityId: id,
-                  authorName: payload.from || "Member",
-                  authorId: payload.authorId || null,
-                  text: payload.text || "",
-                  createdAt: payload.time
-                    ? new Date(payload.time).toISOString()
-                    : new Date().toISOString(),
-                },
-              ]);
+          if (payload.type === "message" && payload.text) {
+            if (payload.messageId && sentMessageIdsRef.current.has(payload.messageId)) {
+              return;
             }
-          } catch {
+            if (payload.from && payload.from === currentUserName) {
+              return;
+            }
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `msg-${Date.now()}`,
+                communityId: id,
+                authorName: payload.from || "Member",
+                authorId: payload.authorId || null,
+                text: payload.text || "",
+                createdAt: payload.time
+                  ? new Date(payload.time).toISOString()
+                  : new Date().toISOString(),
+              },
+            ]);
+          }
+        } catch {
           // ignore
         }
       });
@@ -617,16 +616,16 @@ export default function CommunityDetailPage() {
         >
           {showSearch ? (
             <div className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 shadow-lg w-80">
-               <Search className="h-4 w-4 text-white/60" />
-               <input
-                 ref={searchInputRef}
-                 value={searchTerm}
-                 onChange={(event) => setSearchTerm(event.target.value)}
-                 placeholder="Search messages"
-                 className="w-full bg-transparent text-sm text-white placeholder:text-white/40 focus:outline-none"
-               />
-             </div>
-           ) : null}
+              <Search className="h-4 w-4 text-white/60" />
+              <input
+                ref={searchInputRef}
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search messages"
+                className="w-full bg-transparent text-sm text-white placeholder:text-white/40 focus:outline-none"
+              />
+            </div>
+          ) : null}
           <div
             className={`sticky ${showSearch ? "top-16" : "top-2"} z-20 flex items-center justify-center -translate-y-6 pointer-events-none`}
           >
@@ -654,9 +653,9 @@ export default function CommunityDetailPage() {
                   msg.authorName === currentUserName;
                 const time = msg.createdAt
                   ? new Date(msg.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
                   : "";
                 return [
                   showLabel && label !== currentDateLabel ? (
@@ -677,11 +676,10 @@ export default function CommunityDetailPage() {
                     className={`flex ${isMine ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[78%] rounded-[20px] px-4 py-3 text-sm ${
-                        isMine
+                      className={`max-w-[78%] rounded-[20px] px-4 py-3 text-sm ${isMine
                           ? "bg-[#1F3A67] text-white"
                           : "bg-[#1B1C24] text-white/90"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between gap-3 text-[11px] text-white/50">
                         <span className="truncate">
