@@ -2,40 +2,32 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { usePathname, useRouter } from "next/navigation";
 import { io, type Socket } from "socket.io-client";
-import {
-  createLocalTracks,
-  Room,
-  RoomEvent,
-  Track,
-  type LocalTrack,
-} from "livekit-client";
 import { PhoneCall, PhoneOff, X } from "lucide-react";
 
 type IncomingCall = {
   roomName: string;
   callerId?: string | null;
   callerName?: string | null;
+  sdp?: string | null;
 };
 
 const STORAGE_KEY = "medura:incoming-call";
 
 export default function CallListener() {
   const { data: session } = useSession();
-  const pathname = usePathname();
   const socketRef = useRef<Socket | null>(null);
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const [userRole, setUserRole] = useState<string | null>(
     session?.user ? ((session.user as any)?.role as string) ?? null : null,
   );
   const [callActive, setCallActive] = useState(false);
-  const roomRef = useRef<Room | null>(null);
-  const localTracksRef = useRef<LocalTrack[]>([]);
+  const [callError, setCallError] = useState<string | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-  const [callError, setCallError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -89,21 +81,54 @@ export default function CallListener() {
       ).toLowerCase();
       // allow popup unless explicitly patient
       if (role === "patient") return;
-      if (pathname.startsWith("/doctor/")) return;
-      const next: IncomingCall = {
-        roomName: payload.roomName,
-        callerId: payload.callerId || null,
-        callerName: payload.callerName || "Patient",
-      };
-      setIncoming(next);
+      setIncoming((prev) => ({
+        roomName: payload.roomName || prev?.roomName || "",
+        callerId: payload.callerId || prev?.callerId || null,
+        callerName: payload.callerName || prev?.callerName || "Patient",
+        sdp: prev?.sdp || null,
+      }));
       if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        window.sessionStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            roomName: payload.roomName,
+            callerId: payload.callerId || null,
+            callerName: payload.callerName || "Patient",
+          }),
+        );
       }
+    });
+    socket.on("call:offer", (payload: any) => {
+      const role = String(
+        userRole || (session?.user as any)?.role || "",
+      ).toLowerCase();
+      if (role === "patient") return;
+      setIncoming((prev) => ({
+        roomName: payload.roomName || prev?.roomName || "",
+        callerId: payload.callerId || prev?.callerId || null,
+        callerName: payload.callerName || prev?.callerName || "Patient",
+        sdp: payload.sdp || prev?.sdp || null,
+      }));
+    });
+    socket.on("call:ice", async (payload: any) => {
+      if (!payload?.candidate) return;
+      if (!pcRef.current) return;
+      try {
+        await pcRef.current.addIceCandidate(payload.candidate);
+      } catch {
+        // ignore
+      }
+    });
+    socket.on("call:ended", () => {
+      cleanupCall();
+    });
+    socket.on("call:declined", () => {
+      cleanupCall();
     });
     return () => {
       socket.disconnect();
     };
-  }, [session?.user?.id, session?.user?.name, pathname, userRole]);
+  }, [session?.user?.id, session?.user?.name, userRole]);
 
   useEffect(() => {
     if (!socketRef.current?.connected) return;
@@ -115,20 +140,35 @@ export default function CallListener() {
     });
   }, [session?.user?.id, session?.user?.name]);
 
-  const handleAccept = () => {
+  const handleAccept = async () => {
     if (!incoming || !socketRef.current) return;
-    socketRef.current.emit("call:answer", {
-      toUserId: incoming.callerId || null,
-      roomName: incoming.roomName,
-    });
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ ...incoming, accepted: true }),
-      );
+    if (!incoming.sdp) {
+      setCallError("Call offer missing. Please try again.");
+      return;
     }
-    setCallActive(true);
-    connectLiveKit(incoming.roomName || "");
+    try {
+      setCallError(null);
+      const pc = createPeerConnection(incoming.callerId || null);
+      const stream = await startLocalStream();
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      await pc.setRemoteDescription({ type: "offer", sdp: incoming.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socketRef.current.emit("call:answer", {
+        toUserId: incoming.callerId || null,
+        roomName: incoming.roomName,
+        sdp: answer.sdp,
+      });
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ ...incoming, accepted: true }),
+        );
+      }
+      setCallActive(true);
+    } catch (err: any) {
+      setCallError(err?.message || "Unable to connect call");
+    }
   };
 
   const handleDecline = () => {
@@ -154,85 +194,60 @@ export default function CallListener() {
   };
 
   const cleanupCall = () => {
-    if (roomRef.current) {
-      roomRef.current.disconnect();
-      roomRef.current = null;
+    if (pcRef.current) {
+      pcRef.current.onicecandidate = null;
+      pcRef.current.ontrack = null;
+      pcRef.current.close();
+      pcRef.current = null;
     }
-    if (localTracksRef.current.length) {
-      localTracksRef.current.forEach((track) => track.stop());
-      localTracksRef.current = [];
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((t) => t.stop());
+      remoteStreamRef.current = null;
     }
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     setCallActive(false);
     setIncoming(null);
   };
 
-  const connectLiveKit = async (roomName: string) => {
-    try {
-      setCallError(null);
-      if (roomRef.current) return;
-      const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
-      if (!wsUrl) throw new Error("LiveKit URL missing");
-      const tokenRes = await fetch("/api/livekit/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomName }),
-      });
-      const tokenJson = await tokenRes.json();
-      if (!tokenRes.ok) throw new Error(tokenJson?.error || "Token error");
-      const tokenStrRaw =
-        typeof tokenJson?.token === "string"
-          ? tokenJson.token
-          : typeof tokenJson?.token?.token === "string"
-            ? tokenJson.token.token
-            : tokenJson?.token ?? tokenJson;
-      const tokenStr = typeof tokenStrRaw === "string" ? tokenStrRaw : String(tokenStrRaw || "");
-      if (!tokenStr || tokenStr === "[object Object]") throw new Error("Invalid token");
-
-      const room = new Room({ adaptiveStream: true, dynacast: true });
-      roomRef.current = room;
-
-      room.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === Track.Kind.Video && remoteVideoRef.current) {
-          track.attach(remoteVideoRef.current);
-          remoteVideoRef.current.play().catch(() => undefined);
-        }
-        if (track.kind === Track.Kind.Audio && remoteAudioRef.current) {
-          track.attach(remoteAudioRef.current);
-          remoteAudioRef.current.play().catch(() => undefined);
-        }
-      });
-
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
-        track.detach();
-      });
-
-      room.on(RoomEvent.Disconnected, () => {
-        cleanupCall();
-      });
-
-      await room.connect(wsUrl, tokenStr, { autoSubscribe: true });
-
-      const localTracks = await createLocalTracks({
-        audio: true,
-        video: true,
-      });
-      localTracksRef.current = localTracks;
-      for (const t of localTracks) {
-        await room.localParticipant.publishTrack(t);
+  const createPeerConnection = (targetUserId: string | null) => {
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socketRef.current && incoming?.roomName) {
+        socketRef.current.emit("call:ice", {
+          toUserId: targetUserId,
+          roomName: incoming.roomName,
+          candidate: event.candidate,
+        });
       }
-      const localVideo = localTracks.find((t) => t.kind === Track.Kind.Video);
-      if (localVideo && localVideoRef.current) {
-        localVideo.attach(localVideoRef.current);
-        localVideoRef.current.play().catch(() => undefined);
+    };
+    pc.ontrack = (event) => {
+      const stream = event.streams?.[0];
+      if (stream && remoteVideoRef.current) {
+        remoteStreamRef.current = stream;
+        remoteVideoRef.current.srcObject = stream;
+        remoteVideoRef.current.play().catch(() => undefined);
       }
-    } catch (err: any) {
-      const msg = err?.message || "Unable to connect call";
-      setCallError(msg);
-      // keep overlay open so user can end manually
+    };
+    pcRef.current = pc;
+    return pc;
+  };
+
+  const startLocalStream = async () => {
+    if (localStreamRef.current) return localStreamRef.current;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localStreamRef.current = stream;
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+      localVideoRef.current.play().catch(() => undefined);
     }
+    return stream;
   };
 
   if (!incoming && !callActive) return null;
@@ -286,23 +301,29 @@ export default function CallListener() {
             <p className="mt-2 text-xs text-red-400">{callError}</p>
           ) : null}
           <div className="relative mt-3 overflow-hidden rounded-xl border border-white/10 bg-black">
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="h-[360px] w-full object-cover"
-            />
-            <div className="absolute bottom-4 right-4 h-28 w-40 overflow-hidden rounded-xl border border-white/20 bg-black">
+            <div className="relative h-[420px] w-full overflow-hidden rounded-xl bg-black">
               <video
-                ref={localVideoRef}
-                autoPlay
-                muted
-                playsInline
+                ref={remoteVideoRef}
                 className="h-full w-full object-cover"
+                playsInline
+                autoPlay
               />
+              <div className="absolute bottom-3 right-3 h-24 w-32 overflow-hidden rounded-lg border border-white/20 bg-black/80">
+                <video
+                  ref={localVideoRef}
+                  className="h-full w-full object-cover"
+                  playsInline
+                  autoPlay
+                  muted
+                />
+              </div>
             </div>
+            {callError ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-red-400">
+                {callError}
+              </div>
+            ) : null}
           </div>
-          <audio ref={remoteAudioRef} autoPlay />
           <button
             onClick={endCall}
             className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white/70 hover:text-white"

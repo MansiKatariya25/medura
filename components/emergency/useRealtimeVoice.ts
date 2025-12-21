@@ -91,6 +91,11 @@ export function useRealtimeVoice(active: boolean) {
     if (pcRef.current || status === "connecting" || status === "ready") return;
     setStatus("connecting");
     setError(null);
+    let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      setError("Timed out connecting. Check mic permissions or end other calls.");
+      setStatus("error");
+      disconnect();
+    }, 8000);
 
     try {
       const pc = new RTCPeerConnection();
@@ -104,9 +109,17 @@ export function useRealtimeVoice(active: boolean) {
         }
       };
 
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
+      const micStream = await navigator.mediaDevices
+        .getUserMedia({
+          audio: true,
+        })
+        .catch((err) => {
+          const msg =
+            err?.name === "NotReadableError"
+              ? "Microphone is in use by another app/call."
+              : err?.message || "Microphone unavailable.";
+          throw new Error(msg);
+        });
       micStreamRef.current = micStream;
       micStream.getTracks().forEach((track) => pc.addTrack(track, micStream));
       startAnalysis(micStream);
@@ -181,7 +194,15 @@ export function useRealtimeVoice(active: boolean) {
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
 
       setStatus("ready");
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
     } catch (err: any) {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       disconnect();
       setError(err?.message || "Realtime voice connection failed");
       setStatus("error");
