@@ -3,20 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { doctors } from "@/data/doctors";
-import { LogOut, Loader2, Camera, ArrowLeft, Pencil } from "lucide-react";
+import { LogOut, Loader2, Camera, ArrowLeft, CalendarClock } from "lucide-react";
 import Button from "@/components/ui/Button";
-import Script from "next/script";
+import type { Doctor } from "@/types/doctor";
 
 type Profile = {
   fullName?: string;
   dob?: string;
   gender?: "male" | "female" | "other" | "prefer_not_say" | "";
   email?: string;
+  _id?: string;
   image?: string;
   specialization?: string;
   location?: string | null;
   role?: string | null;
+  availabilitySlots?: { day: string; start: string; end: string; date?: string }[];
   walletBalance?: number;
   earnings?: number;
   pricePerMinute?: number;
@@ -38,6 +39,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [doctorLookup, setDoctorLookup] = useState<Record<string, Doctor>>({});
 
   const [fullName, setFullName] = useState("");
   const [dob, setDob] = useState("");
@@ -60,6 +62,14 @@ export default function ProfilePage() {
   const [priceMsg, setPriceMsg] = useState<string | null>(null);
   const [topupAmount, setTopupAmount] = useState<string>("500");
   const [topupLoading, setTopupLoading] = useState(false);
+  const [availDay, setAvailDay] = useState(() => {
+    const idx = new Date().getDay();
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][idx];
+  });
+  const [availStart, setAvailStart] = useState("09:00");
+  const [availEnd, setAvailEnd] = useState("17:00");
+  const [savingAvail, setSavingAvail] = useState(false);
+  const [availMsg, setAvailMsg] = useState<string | null>(null);
   const imageInput = useRef<HTMLInputElement | null>(null);
   const profileImageKey = session?.user?.id
     ? `medura:profile-image:${session.user.id}`
@@ -94,6 +104,12 @@ export default function ProfilePage() {
             if (pJson.profile.pricePerMinute !== undefined && pJson.profile.pricePerMinute !== null) {
               setPrice(String(pJson.profile.pricePerMinute));
             }
+            if (Array.isArray(pJson.profile.availabilitySlots) && pJson.profile.availabilitySlots.length > 0) {
+              const slot = pJson.profile.availabilitySlots[0];
+              setAvailDay(slot.day || availDay);
+              setAvailStart(slot.start || "09:00");
+              setAvailEnd(slot.end || "17:00");
+            }
           }
         }
         const aJson = await aRes.json();
@@ -110,9 +126,41 @@ export default function ProfilePage() {
   }, [profileImageKey, session?.user?.id]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!profileImage) {
-      const saved = window.localStorage.getItem(profileImageKey);
+    if (appointments.length === 0) return;
+    const ids = Array.from(
+      new Set(appointments.map((a) => a.doctorId).filter(Boolean)),
+    );
+    if (ids.length === 0) return;
+    let active = true;
+    const loadDoctors = async () => {
+      try {
+        const results = await Promise.all(
+          ids.map((id) =>
+            fetch(`/api/doctors/${id}`)
+              .then((r) => r.json())
+              .then((data) => (data?.doctor ? data.doctor : null))
+              .catch(() => null),
+          ),
+        );
+        if (!active) return;
+        const next: Record<string, Doctor> = {};
+        results.forEach((doc, idx) => {
+          if (doc) next[ids[idx]] = doc;
+        });
+        setDoctorLookup(next);
+      } catch {
+        // ignore
+      }
+    };
+    loadDoctors();
+    return () => {
+      active = false;
+    };
+  }, [appointments]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && !profileImage) {
+      const saved = window.localStorage.getItem("medura:profile-image");
       if (saved) {
         setProfileImage(saved);
       }
@@ -260,6 +308,49 @@ export default function ProfilePage() {
     }
   };
 
+  const saveAvailability = async () => {
+    const doctorProfileId = session?.user?.id ?? profile?._id ?? null;
+    if (!profile || String(profile.role || "").toLowerCase() !== "doctor") {
+      setAvailMsg("Doctor profile not loaded");
+      return;
+    }
+    if (!doctorProfileId) {
+      setAvailMsg("Doctor id is missing. Please reload and try again.");
+      return;
+    }
+    setSavingAvail(true);
+    setAvailMsg(null);
+    try {
+      const res = await fetch(`/api/doctors/${doctorProfileId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          availabilityDays: [availDay],
+          availabilitySlots: [
+            { day: availDay, start: availStart, end: availEnd, date: new Date().toISOString().slice(0, 10) },
+          ],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Save failed");
+      setAvailMsg("Availability saved");
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              availabilitySlots: data.doctor?.availabilitySlots || [
+                { day: availDay, start: availStart, end: availEnd },
+              ],
+            }
+          : prev,
+      );
+    } catch (err: any) {
+      setAvailMsg(err?.message || "Could not save availability");
+    } finally {
+      setSavingAvail(false);
+    }
+  };
+
   const saveProfile = async () => {
     setSaving(true);
     try {
@@ -322,7 +413,7 @@ export default function ProfilePage() {
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-[#0f1116] p-6">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center mb-4">
             <div className="flex items-center gap-4">
               <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full border border-white/10 bg-[#111317]">
                 {profileImage ? (
@@ -369,20 +460,11 @@ export default function ProfilePage() {
                 ) : null}
               </div>
             </div>
-            <div className="flex gap-2 lg:ml-auto">
-              <button
-                onClick={() => setShowAccount(true)}
-                className="flex items-center justify-center gap-2 rounded-full bg-[#0b5cff] px-4 py-2 text-sm font-semibold text-white"
-                aria-label="Edit profile"
-              >
-                <Pencil className="h-4 w-4" />
-                <span className="hidden sm:inline">Edit profile</span>
-              </button>
-            </div>
+         
           </div>
 
           {/* Doctor pricing / balances */}
-          {profile?.role === "doctor" ? (
+          {String(profile?.role || "").toLowerCase() === "doctor" ? (
             <div className="rounded-2xl border border-white/10 bg-[#0f1116] p-4 text-white">
               <h3 className="text-lg font-semibold">Video Call Pricing</h3>
               <p className="text-sm text-white/60">
@@ -403,7 +485,81 @@ export default function ProfilePage() {
                 <p className="mt-2 text-sm text-white/70">{priceMsg}</p>
               ) : null}
               <div className="mt-3 text-sm text-white/60">
-                Earnings: ₹{profile.earnings ?? 0}
+                Earnings: ₹{profile?.earnings ?? 0}
+              </div>
+              <div className="mt-6 rounded-xl border border-white/10 bg-[#11121A] p-4">
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="h-4 w-4 text-white/70" />
+                  <p className="text-sm font-semibold">Availability</p>
+                </div>
+                <p className="mt-1 text-xs text-white/60">
+                  Set a day/time window for today (and reuse for future).
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <select
+                    value={availDay}
+                    onChange={(e) => setAvailDay(e.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+                  >
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                      <option key={d} value={d} className="bg-[#0f1116]">
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="time"
+                    value={availStart}
+                    onChange={(e) => setAvailStart(e.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+                  />
+                  <input
+                    type="time"
+                    value={availEnd}
+                    onChange={(e) => setAvailEnd(e.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+                  />
+                  <Button onClick={saveAvailability} disabled={savingAvail}>
+                    {savingAvail ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+                {availMsg ? (
+                  <p className="mt-2 text-xs text-white/70">{availMsg}</p>
+                ) : null}
+                {profile?.availabilitySlots && profile.availabilitySlots.length > 0 ? (
+                  <div className="mt-3 space-y-2 text-xs text-white/70">
+                    {profile.availabilitySlots.map((slot, idx) => (
+                      <div
+                        key={`${slot.day}-${slot.start}-${slot.end}-${idx}`}
+                        className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+                      >
+                        <span className="font-semibold text-white">{slot.day}</span>
+                        <span>
+                          {slot.start} - {slot.end}
+                          {slot.date ? ` • ${slot.date}` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : String(profile?.role || "").toLowerCase() === "ambulance" ? (
+            <div className="rounded-2xl border border-white/10 bg-[#0f1116] p-4 text-white space-y-3">
+              <h3 className="text-lg font-semibold">Service Payments</h3>
+              <p className="text-sm text-white/60">
+                Track payouts for completed emergency services.
+              </p>
+              <div className="rounded-xl border border-white/10 bg-[#11121A] p-4">
+                <div className="text-xs uppercase tracking-wide text-white/50">
+                  Total Earnings
+                </div>
+                <div className="mt-2 text-2xl font-bold">
+                  ₹{profile?.earnings ?? 0}
+                </div>
+              </div>
+              <div className="text-xs text-white/50">
+                Payouts are processed after service completion.
               </div>
             </div>
           ) : (
@@ -625,12 +781,29 @@ export default function ProfilePage() {
                     key={a._id ?? a.id}
                     className="flex items-center justify-between rounded-xl border border-white/10 bg-[#11121A] p-3"
                   >
-                    <div>
-                      <div className="font-semibold">
-                        {a.doctorId}
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                        {doctorLookup[a.doctorId]?.image ? (
+                          <div
+                            className="h-full w-full bg-cover bg-center"
+                            style={{ backgroundImage: `url(${doctorLookup[a.doctorId]?.image})` }}
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-xs text-white/50">
+                            DR
+                          </div>
+                        )}
                       </div>
-                      <div className="text-sm text-white/60">
-                        {dt ? dt.toLocaleString() : "Date pending"}
+                      <div>
+                        <div className="font-semibold">
+                          {doctorLookup[a.doctorId]?.name ?? "Doctor"}
+                        </div>
+                        <div className="text-xs text-white/50">
+                          {doctorLookup[a.doctorId]?.specialty ?? "Specialist"}
+                        </div>
+                        <div className="text-sm text-white/60">
+                          {dt ? dt.toLocaleString() : "Date pending"}
+                        </div>
                       </div>
                     </div>
                     <div className="text-sm text-white/70">{a.status}</div>
@@ -660,12 +833,29 @@ export default function ProfilePage() {
                     key={a._id ?? a.id}
                     className="flex items-center justify-between rounded-xl border border-white/10 bg-[#11121A] p-3"
                   >
-                    <div>
-                      <div className="font-semibold">
-                        {a.doctorId}
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                        {doctorLookup[a.doctorId]?.image ? (
+                          <div
+                            className="h-full w-full bg-cover bg-center"
+                            style={{ backgroundImage: `url(${doctorLookup[a.doctorId]?.image})` }}
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-xs text-white/50">
+                            DR
+                          </div>
+                        )}
                       </div>
-                      <div className="text-sm text-white/60">
-                        {dt ? dt.toLocaleString() : "Date pending"}
+                      <div>
+                        <div className="font-semibold">
+                          {doctorLookup[a.doctorId]?.name ?? "Doctor"}
+                        </div>
+                        <div className="text-xs text-white/50">
+                          {doctorLookup[a.doctorId]?.specialty ?? "Specialist"}
+                        </div>
+                        <div className="text-sm text-white/60">
+                          {dt ? dt.toLocaleString() : "Date pending"}
+                        </div>
                       </div>
                     </div>
                     <div className="text-sm text-white/70">{a.status}</div>

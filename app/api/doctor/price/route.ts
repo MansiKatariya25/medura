@@ -12,8 +12,11 @@ export async function GET() {
   const client = await clientPromise;
   const db = client.db();
   const doctor = await db
-    .collection("doctors")
-    .findOne({ id: session.user.id }, { projection: { pricePerMinute: 1 } });
+    .collection("users")
+    .findOne(
+      { _id: new ObjectId(session.user.id), role: "doctor" },
+      { projection: { pricePerMinute: 1 } },
+    );
   return NextResponse.json({ pricePerMinute: doctor?.pricePerMinute ?? 0 });
 }
 
@@ -29,13 +32,8 @@ export async function PATCH(req: Request) {
   }
   const client = await clientPromise;
   const db = client.db();
-  await db.collection("doctors").updateOne(
-    { id: session.user.id },
-    { $set: { pricePerMinute: price, updatedAt: new Date() } },
-    { upsert: true },
-  );
   await db.collection("users").updateOne(
-    { _id: new ObjectId(session.user.id) },
+    { _id: new ObjectId(session.user.id), role: "doctor" },
     { $set: { pricePerMinute: price, updatedAt: new Date() } },
   );
   return NextResponse.json({ ok: true, pricePerMinute: price });

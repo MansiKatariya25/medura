@@ -17,7 +17,9 @@ export default function AmbulanceBottomNav() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   const role = (session?.user as any)?.role;
-  const isAmbulance = status === "authenticated" && role === "ambulance";
+  const isAmbulance =
+    pathname.startsWith("/ambulance") ||
+    (status === "authenticated" && role === "ambulance");
 
   const hideForChat =
     pathname.startsWith("/community/") && pathname !== "/community";

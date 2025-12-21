@@ -3,17 +3,6 @@ import { getServerSession } from "next-auth";
 import { ObjectId } from "mongodb";
 import { authOptions } from "@/lib/auth";
 import clientPromise from "@/lib/mongodb";
-import { doctors } from "@/data/doctors";
-
-const findDoctorId = (name?: string | null) => {
-  if (!name) return null;
-  const normalized = name.trim().toLowerCase();
-  const match = doctors.find(
-    (doc) => doc.name.toLowerCase() === normalized,
-  );
-  return match?.id ?? null;
-};
-
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -31,27 +20,13 @@ export async function GET() {
 
     const user = await db.collection("users").findOne<{
       role?: string;
-      doctorId?: string;
-      name?: string;
-    }>(filter, { projection: { role: 1, doctorId: 1, name: 1 } });
+    }>(filter, { projection: { role: 1 } });
 
     if (user?.role !== "doctor") {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    let doctorId = user?.doctorId ?? null;
-    if (!doctorId) {
-      doctorId = findDoctorId(user?.name ?? null);
-      if (doctorId) {
-        await db.collection("users").updateOne(filter, {
-          $set: { doctorId },
-        });
-      }
-    }
-
-    if (!doctorId) {
-      return NextResponse.json({ ok: true, appointments: [] });
-    }
+    const doctorId = session.user.id;
 
     const items = await db
       .collection("appointments")

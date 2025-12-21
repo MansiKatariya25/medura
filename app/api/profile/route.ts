@@ -88,11 +88,9 @@ export async function GET(req: Request) {
 
   try {
     const user = await db.collection("users").findOne({ _id: new ObjectId(session.user.id) });
-    const doctorPrice = user?.role === "doctor"
-      ? await db.collection("doctors").findOne({ id: session.user.id }, { projection: { pricePerMinute: 1 } })
-      : null;
     if (!user) return NextResponse.json({ ok: true, profile: null });
     return NextResponse.json({ ok: true, profile: {
+      _id: String(user._id),
       fullName: user.fullName ?? user.name ?? null,
       dob: user.dob ?? null,
       gender: user.gender ?? null,
@@ -100,7 +98,8 @@ export async function GET(req: Request) {
       image: user.image ?? null,
       walletBalance: user.walletBalance ?? 0,
       earnings: user.earnings ?? 0,
-      pricePerMinute: doctorPrice?.pricePerMinute ?? user.pricePerMinute ?? null,
+      pricePerMinute: user.pricePerMinute ?? null,
+      availabilitySlots: user.availabilitySlots ?? [],
       bloodGroup: user.bloodGroup ?? null,
       height: user.height ?? null,
       weight: user.weight ?? null,

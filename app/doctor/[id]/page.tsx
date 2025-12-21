@@ -2,28 +2,57 @@
 
 import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { io, type Socket } from "socket.io-client";
-import { doctors } from "@/data/doctors";
-import { HeartPulse, X } from "lucide-react";
+import { HeartPulse } from "lucide-react";
+import type { Doctor } from "@/types/doctor";
 
 export default function DoctorPage() {
   const router = useRouter();
   const params = useParams();
   const idRaw = params?.id;
   const id = Array.isArray(idRaw) ? idRaw[0] : idRaw;
-  const doctor = id ? doctors.find((d) => d.id === id) : undefined;
   const { data: session } = useSession();
+  const [doctor, setDoctor] = useState<Doctor | null>(null);
+  const [loadingDoctor, setLoadingDoctor] = useState(true);
+  const [availability, setAvailability] = useState<string[]>([]);
+  const [savingAvailability, setSavingAvailability] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [callState, setCallState] = useState<"idle" | "incoming" | "active">("idle");
-  const [callRoom, setCallRoom] = useState<string | null>(null);
-  const [caller, setCaller] = useState<{ name?: string | null }>({});
-  const socketRef = useRef<Socket | null>(null);
 
-  if (!doctor) return <div className="p-6 text-white">Doctor not found</div>;
+  const isOwnDoctor =
+    !!id && session?.user?.id === id && (session.user as any).role === "doctor";
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!id) return;
+      setLoadingDoctor(true);
+      setLoadError(null);
+      try {
+        const res = await fetch(`/api/doctors/${id}`, { credentials: "include" });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || "Unable to load doctor");
+        }
+        if (!active) return;
+        setDoctor(data.doctor);
+        setAvailability(data.doctor?.availabilityDays || []);
+      } catch (err: any) {
+        if (!active) return;
+        setLoadError(err?.message || "Failed to load doctor");
+      } finally {
+        if (active) setLoadingDoctor(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
 
   const today = new Date();
   const week = useMemo(() =>
@@ -49,6 +78,7 @@ export default function DoctorPage() {
 
   const handleReserve = async () => {
     if (!selectedSlot) return setMessage("Please select a slot");
+    if (!doctor) return setMessage("Doctor unavailable");
     setIsSubmitting(true);
     setMessage(null);
     try {
@@ -85,70 +115,43 @@ export default function DoctorPage() {
     }
   };
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const socket = io({
-      path: "/socket.io",
-      withCredentials: true,
-      reconnection: true,
-    });
-    socketRef.current = socket;
-    socket.on("connect", () => {
-      socket.emit("identify-user", {
-        userId: session?.user?.id || null,
-        userName: session?.user?.name || doctor.name,
-        role: session?.user ? (session.user as any).role || "doctor" : "doctor",
+
+  const toggleDay = (day: string) => {
+    setAvailability((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day],
+    );
+  };
+
+  const saveAvailability = async () => {
+    if (!isOwnDoctor || !id) return;
+    setSavingAvailability(true);
+    try {
+      const res = await fetch(`/api/doctors/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ availabilityDays: availability }),
       });
-    });
-    socket.on("call:incoming", (payload: any) => {
-      setCallState("incoming");
-      setCallRoom(payload.roomName);
-      setCaller({ name: payload.callerName });
-    });
-    socket.on("call:ended", () => {
-      setCallState("idle");
-      setCallRoom(null);
-      setCaller({});
-    });
-    socket.on("call:declined", () => {
-      setCallState("idle");
-      setCallRoom(null);
-      setCaller({});
-    });
-    socket.on("call:answered", () => {
-      setCallState("active");
-    });
-    return () => {
-      socket.disconnect();
-    };
-  }, [session?.user?.id, session?.user?.name, doctor.name]);
-
-  const acceptCall = () => {
-    if (!socketRef.current || !callRoom) return;
-    socketRef.current.emit("call:answer", {
-      toUserId: null,
-      roomName: callRoom,
-    });
-    setCallState("active");
-  };
-
-  const declineCall = () => {
-    if (!socketRef.current || !callRoom) return;
-    socketRef.current.emit("call:decline", {
-      toUserId: null,
-      roomName: callRoom,
-    });
-    setCallState("idle");
-    setCallRoom(null);
-  };
-
-  const endCall = () => {
-    if (socketRef.current && callRoom) {
-      socketRef.current.emit("call:end", { toUserId: null, roomName: callRoom });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Update failed");
+      setDoctor(data.doctor);
+    } catch (err: any) {
+      setMessage(err?.message || "Could not save availability");
+    } finally {
+      setSavingAvailability(false);
     }
-    setCallState("idle");
-    setCallRoom(null);
   };
+
+  if (loadingDoctor) {
+    return <div className="p-6 text-white">Loading doctor...</div>;
+  }
+
+  if (!doctor) {
+    return (
+      <div className="p-6 text-white">
+        {loadError || "Doctor not found"}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -184,6 +187,66 @@ export default function DoctorPage() {
           <div className="mt-6 rounded-lg bg-[#0f1116] p-4">
             <h2 className="mb-2 text-sm font-semibold">About</h2>
             <p className="text-sm text-white/60">{doctor.description}</p>
+          </div>
+
+          <div className="mt-6 rounded-lg bg-[#0f1116] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Availability</h2>
+              {isOwnDoctor ? (
+                <button
+                  onClick={saveAvailability}
+                  disabled={savingAvailability}
+                  className="rounded-full bg-[#0b5cff] px-3 py-1 text-xs font-semibold text-white disabled:bg-white/20"
+                >
+                  {savingAvailability ? "Saving..." : "Save"}
+                </button>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => {
+                const active = availability.includes(day);
+                return (
+                  <button
+                    key={day}
+                    onClick={() => isOwnDoctor && toggleDay(day)}
+                    className={`rounded-full border px-3 py-2 text-xs font-semibold ${
+                      active
+                        ? "border-[#0b5cff] bg-[#0b5cff]/20 text-white"
+                        : "border-white/10 bg-transparent text-white/60"
+                    } ${isOwnDoctor ? "hover:border-[#0b5cff]" : ""}`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+            {!isOwnDoctor ? (
+              <p className="mt-2 text-xs text-white/50">
+                {availability.length === 0
+                  ? "Doctor has not set availability yet."
+                  : "Available on highlighted days."}
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-white/50">
+                Toggle the days you are available for video calls and appointments.
+              </p>
+            )}
+            {Array.isArray(doctor.availabilitySlots) && doctor.availabilitySlots.length > 0 ? (
+              <div className="mt-4 space-y-2 text-xs text-white/70">
+                {doctor.availabilitySlots.map((slot, idx) => (
+                  <div
+                    key={`${slot.day}-${slot.start}-${slot.end}-${idx}`}
+                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+                  >
+                    <span className="font-semibold text-white">{slot.day}</span>
+                    <span>
+                      {slot.start} - {slot.end}
+                      {slot.date ? ` • ${slot.date}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-6 rounded-lg bg-[#0f1116] p-4">
@@ -237,63 +300,6 @@ export default function DoctorPage() {
         </div>
       </div>
 
-      {callState === "incoming" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-sm rounded-2xl bg-[#0f1116] p-5 text-white">
-            <h3 className="text-lg font-semibold">Incoming call</h3>
-            <p className="mt-2 text-sm text-white/70">
-              {caller.name || "Caller"}
-            </p>
-            <div className="mt-4 flex gap-3">
-              <button
-                onClick={declineCall}
-                className="flex-1 rounded-full border border-white/15 bg-white/5 py-2 text-sm text-white hover:bg-white/10"
-              >
-                Decline
-              </button>
-              <button
-                onClick={acceptCall}
-                className="flex-1 rounded-full bg-[#4D7CFF] py-2 text-sm font-semibold text-white"
-              >
-                Accept
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {callState === "active" && callRoom && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-2xl space-y-3 rounded-2xl bg-[#0f1116] p-4 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-white/60">In call</p>
-                <p className="text-lg font-semibold">{caller.name || "Patient"}</p>
-              </div>
-              <button
-                onClick={endCall}
-                className="rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white"
-              >
-                End
-              </button>
-            </div>
-            <div className="overflow-hidden rounded-xl border border-white/10">
-              <iframe
-                title="Call"
-                src={`https://meet.jit.si/${callRoom}`}
-                className="h-[420px] w-full bg-black"
-                allow="camera; microphone; fullscreen; display-capture"
-              />
-            </div>
-            <button
-              onClick={() => setCallState("active")}
-              className="absolute right-3 top-3 text-white/60 hover:text-white"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }
