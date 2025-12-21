@@ -10,6 +10,11 @@ const patchSchema = z.object({
   fullName: z.string().min(2).max(80).optional(),
   dob: z.string().min(8).max(32).optional(),
   gender: z.enum(["male", "female", "other", "prefer_not_say"]).optional(),
+  image: z.string().url().optional(),
+  bloodGroup: z.string().min(1).max(10).optional(),
+  height: z.string().min(1).max(20).optional(),
+  weight: z.string().min(1).max(20).optional(),
+  allergies: z.string().min(1).max(120).optional(),
 });
 
 export async function PATCH(req: Request) {
@@ -32,6 +37,11 @@ export async function PATCH(req: Request) {
   }
   if (parsed.data.dob) updates.dob = parsed.data.dob;
   if (parsed.data.gender) updates.gender = parsed.data.gender;
+  if (parsed.data.image) updates.image = parsed.data.image;
+  if (parsed.data.bloodGroup) updates.bloodGroup = parsed.data.bloodGroup;
+  if (parsed.data.height) updates.height = parsed.data.height;
+  if (parsed.data.weight) updates.weight = parsed.data.weight;
+  if (parsed.data.allergies) updates.allergies = parsed.data.allergies;
 
   const profileComplete =
     Boolean(updates.fullName) &&
@@ -68,6 +78,11 @@ export async function GET(req: Request) {
       dob: user.dob ?? null,
       gender: user.gender ?? null,
       email: user.email ?? session.user.email ?? null,
+      image: user.image ?? null,
+      bloodGroup: user.bloodGroup ?? null,
+      height: user.height ?? null,
+      weight: user.weight ?? null,
+      allergies: user.allergies ?? null,
       profileComplete: Boolean(user.profileComplete),
     }});
   } catch (err) {

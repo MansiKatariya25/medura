@@ -23,12 +23,11 @@ import {
   X,
   Video,
   Plus,
+  Loader2,
 } from "lucide-react";
 
 import { doctors as seedDoctors } from "@/data/doctors";
-import { activePrescriptions, recentLabs, recentImaging } from "@/data/records";
 import MedKeyCard from "@/components/home/MedKeyCard";
-import UploadRecordModal from "@/components/home/UploadRecordModal";
 import { signOut } from "next-auth/react";
 import Button from "@/components/ui/Button";
 import type { Doctor } from "@/schemas/doctor";
@@ -134,8 +133,17 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const loadingMoreRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [selectedTab, setSelectedTab] = useState("home");
-  const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [uploadedRecords, setUploadedRecords] = useState<{ id: string, type: string, title: string, date: string, status?: string }[]>([]);
+  const [medStats, setMedStats] = useState<{
+    bloodGroup?: string;
+    height?: string;
+    weight?: string;
+    allergies?: string;
+  }>({});
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [docs, setDocs] = useState<any[]>([]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [docError, setDocError] = useState<string | null>(null);
+  const docInputRef = useRef<HTMLInputElement | null>(null);
   const [displayedTab, setDisplayedTab] = useState("home");
   const [avatarImage, setAvatarImage] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
@@ -681,6 +689,107 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     </>
   );
 
+  useEffect(() => {
+    if (selectedTab !== "medkey") return;
+    let active = true;
+    const loadStats = async () => {
+      try {
+        const res = await fetch("/api/profile", { credentials: "include" });
+        const data = await res.json();
+        if (!res.ok || !data?.profile) return;
+        if (!active) return;
+        setMedStats({
+          bloodGroup: data.profile.bloodGroup || "",
+          height: data.profile.height || "",
+          weight: data.profile.weight || "",
+          allergies: data.profile.allergies || "",
+        });
+      } catch {
+        // ignore
+      }
+    };
+    loadStats();
+    return () => {
+      active = false;
+    };
+  }, [selectedTab]);
+
+  useEffect(() => {
+    if (selectedTab !== "medkey") return;
+    let active = true;
+    const controller = new AbortController();
+    const loadDocs = async () => {
+      try {
+        const res = await fetch(
+          `/api/medkey/documents?q=${encodeURIComponent(recordSearchQuery)}`,
+          { signal: controller.signal, credentials: "include" },
+        );
+        const data = await res.json();
+        if (!res.ok) return;
+        if (!active) return;
+        setDocs(data.documents || []);
+      } catch {
+        // ignore
+      }
+    };
+    loadDocs();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [selectedTab, recordSearchQuery]);
+
+  const handleUploadDocument = async (file: File) => {
+    setDocError(null);
+    const mime = file.type;
+    if (!mime.startsWith("image/") && mime !== "application/pdf") {
+      setDocError("Only images or PDFs are allowed.");
+      return;
+    }
+    const cloud = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+    const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+    if (!cloud || !preset) {
+      setDocError("Cloudinary not configured.");
+      return;
+    }
+    setUploadingDoc(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("upload_preset", preset);
+      const uploadRes = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloud}/auto/upload`,
+        {
+          method: "POST",
+          body: fd,
+        },
+      );
+      const uploadJson = await uploadRes.json();
+      if (!uploadRes.ok) {
+        throw new Error(uploadJson?.error?.message || "Upload failed");
+      }
+      const url = uploadJson.secure_url || uploadJson.url;
+      const createRes = await fetch("/api/medkey/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: file.name,
+          url,
+          mimeType: mime,
+        }),
+      });
+      const createJson = await createRes.json();
+      if (!createRes.ok) {
+        throw new Error(createJson?.error || "Save failed");
+      }
+      setDocs((prev) => [createJson.document, ...prev]);
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
   const renderTabContent = (tab: string) => {
     if (tab === "home") return renderHomeSections();
     if (tab === "chat") {
@@ -699,19 +808,107 @@ export default function HomeDashboard({ userName }: { userName: string }) {
       );
     }
     if (tab === "medkey") {
+      const statsMissing = ["bloodGroup", "height", "weight", "allergies"].some(
+        (key) => !(medStats as any)[key],
+      );
       return (
         <section className="space-y-6">
           <MedKeyCard />
 
+          {statsMissing ? (
+            <button
+              onClick={() => setShowStatsModal(true)}
+              className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+            >
+              <Plus className="h-4 w-4" />
+              Update stats
+            </button>
+          ) : null}
+
+          <div className="rounded-[32px] border border-white/10 bg-[#11121A]/80 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Your Documents</h3>
+                <p className="text-sm text-white/60">
+                  Upload images or PDFs, auto summarized.
+                </p>
+              </div>
+              <div className="flex flex-1 items-center gap-2 md:max-w-md">
+                <div className="relative flex-1">
+                  <input
+                    placeholder="Search documents..."
+                    value={recordSearchQuery}
+                    onChange={(e) => setRecordSearchQuery(e.target.value)}
+                    className="w-full rounded-xl bg-white/5 py-2.5 pl-3 pr-3 text-sm text-white placeholder:text-white/30 focus:outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => docInputRef.current?.click()}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#4D7CFF] text-white"
+                  aria-label="Upload document"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {uploadingDoc ? (
+              <div className="mt-3 flex items-center gap-2 text-sm text-white/70">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Processing document...
+              </div>
+            ) : null}
+            {docError ? (
+              <p className="mt-2 text-sm text-red-300">{docError}</p>
+            ) : null}
+
+            <div className="mt-4 space-y-3">
+              {docs.length === 0 && !uploadingDoc ? (
+                <p className="text-sm text-white/50">
+                  No documents yet. Upload to see here.
+                </p>
+              ) : (
+                docs.map((doc) => (
+                  <div
+                    key={doc._id}
+                    className="flex items-start justify-between rounded-2xl border border-white/10 bg-white/5 p-3"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        {doc.title}
+                      </p>
+                      <p className="mt-2 text-sm text-white/60">
+                        {doc.summary || "No summary"}
+                      </p>
+                    </div>
+                    <a
+                      href={doc.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
+                    >
+                      View
+                    </a>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-4 gap-2">
             {[
-              { label: "Blood", value: "O+", color: "text-red-400 bg-red-400/10" },
-              { label: "Height", value: "182cm", color: "text-blue-400 bg-blue-400/10" },
-              { label: "Weight", value: "75kg", color: "text-orange-400 bg-orange-400/10" },
-              { label: "Allergies", value: "None", color: "text-green-400 bg-green-400/10" },
+              { label: "Blood", value: medStats.bloodGroup || "—", color: "text-red-400 bg-red-400/10" },
+              { label: "Height", value: medStats.height || "—", color: "text-blue-400 bg-blue-400/10" },
+              { label: "Weight", value: medStats.weight || "—", color: "text-orange-400 bg-orange-400/10" },
+              { label: "Allergies", value: medStats.allergies || "—", color: "text-green-400 bg-green-400/10" },
             ].map((stat) => (
-              <div key={stat.label} className={`flex flex-col items-center justify-center rounded-2xl border border-white/5 p-3 ${stat.color}`}>
-                <p className="text-[10px] font-medium uppercase tracking-wider opacity-70">{stat.label}</p>
+              <div
+                key={stat.label}
+                className={`flex flex-col items-center justify-center rounded-2xl border border-white/5 p-3 ${stat.color}`}
+              >
+                <p className="text-[10px] font-medium uppercase tracking-wider opacity-70">
+                  {stat.label}
+                </p>
                 <p className="text-sm font-bold">{stat.value}</p>
               </div>
             ))}
@@ -721,7 +918,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
             <div className="flex flex-col md:w-1/2">
               <h2 className="text-xl font-semibold text-white">Records Vault</h2>
               <p className="text-sm text-white/60">
-                Access your prescriptions, diagnostic reports, and imaging linked to your ABHA ID.
+                Store and access your medical records in one place.
               </p>
             </div>
             <div className="mt-4 flex w-full flex-col gap-3 md:mt-0 md:w-1/2 md:flex-row md:items-center">
@@ -735,7 +932,7 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 />
               </div>
               <button
-                onClick={() => setIsUploadOpen(true)}
+                onClick={() => docInputRef.current?.click()}
                 className="flex items-center justify-center gap-2 rounded-xl bg-[#4D7CFF] px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
               >
                 <Plus className="h-4 w-4" />
@@ -744,106 +941,64 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               </button>
             </div>
           </div>
-
-          <UploadRecordModal
-            isOpen={isUploadOpen}
-            onClose={() => setIsUploadOpen(false)}
-            onUpload={(data) => {
-              setUploadedRecords(prev => [data, ...prev]);
+          <input
+            ref={docInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleUploadDocument(file);
+              if (e.target) e.target.value = "";
             }}
           />
 
-          {/* Uploaded Records (Dynamic) */}
-          {/* Uploaded Records (Dynamic) */}
-          {uploadedRecords.filter(r => r.title.toLowerCase().includes(recordSearchQuery.toLowerCase())).length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between px-2">
-                <h3 className="text-sm font-medium text-white/80">Recently Uploaded</h3>
-              </div>
-              <div className="space-y-2">
-                {uploadedRecords
-                  .filter(r => r.title.toLowerCase().includes(recordSearchQuery.toLowerCase()))
-                  .map((rec) => (
-                    <div key={rec.id} className="flex items-center justify-between rounded-[24px] border border-white/10 bg-[#15161E] p-4">
-                      <div>
-                        <p className="text-sm font-medium text-white">{rec.title}</p>
-                        <p className="text-xs text-uppercase text-white/50">{rec.type.replace('_', ' ')} • {rec.date}</p>
-                      </div>
-                      <div className="rounded-full bg-green-500/10 px-2 py-1 text-[10px] font-medium text-green-400">
-                        Uploaded
-                      </div>
-                    </div>
+          {showStatsModal ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+              <div className="w-full max-w-md rounded-2xl bg-[#0f1116] p-5 text-white">
+                <h3 className="text-lg font-semibold">Update health details</h3>
+                <div className="mt-4 space-y-3">
+                  {[
+                    { key: "bloodGroup", label: "Blood group" },
+                    { key: "height", label: "Height" },
+                    { key: "weight", label: "Weight" },
+                    { key: "allergies", label: "Allergies" },
+                  ].map((f) => (
+                    <input
+                      key={f.key}
+                      value={(medStats as any)[f.key] || ""}
+                      onChange={(e) =>
+                        setMedStats((prev) => ({ ...prev, [f.key]: e.target.value }))
+                      }
+                      placeholder={f.label}
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none"
+                    />
                   ))}
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowStatsModal(false)}
+                    className="rounded-full border border-white/10 px-3 py-1.5 text-sm text-white/70"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await fetch("/api/profile", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(medStats),
+                      });
+                      setShowStatsModal(false);
+                    }}
+                    className="rounded-full bg-[#4D7CFF] px-3 py-1.5 text-sm font-semibold"
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
             </div>
-          )}
-
-          {/* Active Prescriptions */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-2">
-              <h3 className="text-sm font-medium text-white/80">Active Prescriptions</h3>
-              <button className="text-xs text-[#4D7CFF]">See all</button>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {activePrescriptions.filter(r => r.medicine.toLowerCase().includes(recordSearchQuery.toLowerCase())).map((rx) => (
-                <div key={rx.id} className="rounded-[24px] border border-white/10 bg-[#15161E] p-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-semibold text-white">{rx.medicine}</p>
-                      <p className="text-sm text-white/50">{rx.dosage}</p>
-                    </div>
-                    <div className="rounded-full bg-green-500/10 px-2 py-1 text-[10px] font-medium text-green-400">
-                      {rx.status}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2 text-xs text-white/40">
-                    <span>{rx.doctor}</span>
-                    <span>•</span>
-                    <span>{rx.date}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Recent Labs */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-2">
-              <h3 className="text-sm font-medium text-white/80">Recent Lab Reports</h3>
-            </div>
-            <div className="space-y-2">
-              {recentLabs.filter(r => r.testName.toLowerCase().includes(recordSearchQuery.toLowerCase())).map((lab) => (
-                <div key={lab.id} className="flex items-center justify-between rounded-[24px] border border-white/10 bg-[#15161E] p-4">
-                  <div>
-                    <p className="text-sm font-medium text-white">{lab.testName}</p>
-                    <p className="text-xs text-white/50">{lab.laboratory} • {lab.date}</p>
-                  </div>
-                  <div className={`rounded-full px-2 py-1 text-[10px] font-medium ${lab.status === 'Normal' ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`}>
-                    {lab.status}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Imaging */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-2">
-              <h3 className="text-sm font-medium text-white/80">Imaging & Scans</h3>
-            </div>
-            <div className="grid gap-3 lg:grid-cols-2">
-              {recentImaging.filter(r => r.scanType.toLowerCase().includes(recordSearchQuery.toLowerCase())).map((img) => (
-                <div key={img.id} className="group relative overflow-hidden rounded-[24px] border border-white/10 bg-[#15161E] p-4">
-                  <div className="relative z-10">
-                    <p className="font-medium text-white">{img.scanType}</p>
-                    <p className="text-xs text-white/50">{img.hospital} • {img.date}</p>
-                  </div>
-                  <FileText className="absolute bottom-4 right-4 h-10 w-10 text-white/50 stroke-1" />
-                </div>
-              ))}
-            </div>
-          </div>
-
+          ) : null}
         </section>
       );
     }
