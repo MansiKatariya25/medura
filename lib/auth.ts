@@ -10,6 +10,7 @@ import clientPromise from "@/lib/mongodb";
 const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
+  role: z.enum(["patient", "doctor", "ambulance"]).optional(),
 });
 
 export const authOptions: NextAuthOptions = {
@@ -28,6 +29,7 @@ export const authOptions: NextAuthOptions = {
         if (!parsed.success) return null;
 
         const emailLower = parsed.data.email.toLowerCase();
+        const role = parsed.data.role ?? "patient";
         const client = await clientPromise;
         const db = client.db();
 
@@ -37,9 +39,14 @@ export const authOptions: NextAuthOptions = {
           name?: string;
           image?: string | null;
           passwordHash?: string;
+          role?: string;
         }>({ emailLower });
 
         if (!user?.passwordHash) return null;
+
+        if (user.role && user.role !== role) {
+          return null;
+        }
 
         const ok = await bcrypt.compare(parsed.data.password, user.passwordHash);
         if (!ok) return null;
@@ -72,12 +79,18 @@ export const authOptions: NextAuthOptions = {
         dob?: string;
         gender?: "male" | "female" | "other" | "prefer_not_say";
         profileComplete?: boolean;
+        role?: string;
+        meduraId?: string;
+        state?: string;
       }>(userObjectId ? { _id: userObjectId } : { id: userId });
 
       if (stored?.fullName) session.user.fullName = stored.fullName;
       if (stored?.dob) session.user.dob = stored.dob;
       if (stored?.gender) session.user.gender = stored.gender;
       session.user.profileComplete = Boolean(stored?.profileComplete);
+      if (stored?.role) (session.user as any).role = stored.role;
+      if (stored?.meduraId) (session.user as any).meduraId = stored.meduraId;
+      if (stored?.state) (session.user as any).state = stored.state;
 
       if (stored?.fullName) session.user.name = stored.fullName;
       return session;

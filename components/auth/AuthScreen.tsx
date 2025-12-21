@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
@@ -29,6 +29,19 @@ export default function AuthScreen() {
   const [gender, setGender] = useState(genderOptions[0]!.value);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [state, setState] = useState("");
+  const [location, setLocation] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!("geolocation" in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation(`${pos.coords.latitude},${pos.coords.longitude}`);
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  }, []);
 
   const subtitle = useMemo(() => {
     if (mode === "signup") {
@@ -36,6 +49,10 @@ export default function AuthScreen() {
     }
     return "Sign in to continue to your dashboard.";
   }, [mode]);
+
+  // helper to allow ambulance and doctor quick access from landing
+  const goToDoctor = () => router.push('/auth/doctor');
+  const goToAmbulance = () => router.push('/auth/ambulance');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,7 +63,7 @@ export default function AuthScreen() {
         const res = await fetch("/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullName, dob, gender, email, password }),
+          body: JSON.stringify({ fullName, dob, gender, email, password, state, location }),
         });
 
         const payload = (await res.json().catch(() => null)) as
@@ -62,8 +79,9 @@ export default function AuthScreen() {
       const signInRes = await signIn("credentials", {
         email,
         password,
+        role: "patient",
         redirect: false,
-        callbackUrl: "/",
+        callbackUrl: "/home",
       });
 
       if (signInRes?.error || !signInRes?.ok) {
@@ -74,7 +92,7 @@ export default function AuthScreen() {
       if (signInRes.url) {
         router.replace(signInRes.url);
       } else {
-        router.replace("/");
+        router.replace("/home");
       }
       router.refresh();
     } catch {
@@ -139,23 +157,31 @@ export default function AuthScreen() {
                     autoComplete="name"
                     required
                   />
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <Input
-                      label="Date of birth"
-                      name="dob"
-                      type="date"
-                      value={dob}
-                      onChange={(e) => setDob(e.target.value)}
-                      required
-                    />
-                    <Select
-                      label="Gender"
-                      name="gender"
-                      value={gender}
-                      onChange={(e) => setGender(e.target.value)}
-                      options={genderOptions}
-                    />
-                  </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input
+                  label="Date of birth"
+                  name="dob"
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  required
+                />
+                <Select
+                  label="Gender"
+                  name="gender"
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  options={genderOptions}
+                />
+              </div>
+              <Input
+                label="State"
+                name="state"
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                placeholder="Your state"
+                required
+              />
                 </>
               ) : null}
 

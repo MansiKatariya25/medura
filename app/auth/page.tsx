@@ -1,6 +1,8 @@
+"use client";
+
 import Link from "next/link";
 
-export default function Landing() {
+export default function AuthLanding() {
   return (
     <main className="min-h-screen bg-[#05060B] px-4 py-10 text-white">
       <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-8">
@@ -25,10 +27,6 @@ export default function Landing() {
             <div className="text-lg font-semibold">Ambulance</div>
             <p className="mt-2 text-sm text-white/60">Ambulance / rider signup (vehicle, phone)</p>
           </Link>
-        </div>
-
-        <div className="mt-8 w-full text-center text-sm text-white/60">
-          Already have an account? <Link href="/home" className="text-white underline">Go to Home</Link>
         </div>
       </div>
     </main>
