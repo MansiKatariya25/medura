@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { doctors } from "@/data/doctors";
+import { LogOut, Loader2, Camera, ArrowLeft, Pencil } from "lucide-react";
 
 type Profile = {
   fullName?: string;
@@ -48,6 +49,8 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pwMsg, setPwMsg] = useState<string | null>(null);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const imageInput = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -100,20 +103,54 @@ export default function ProfilePage() {
     }
   }, [profileImage]);
 
-  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result === "string") {
-        setProfileImage(result);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("medura:profile-image", result);
-        }
+    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+    if (!cloudName || !uploadPreset) {
+      setImageError("Cloudinary is not configured.");
+      return;
+    }
+    setImageError(null);
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", uploadPreset);
+      const uploadRes = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      if (!uploadRes.ok) {
+        throw new Error("Upload failed");
       }
-    };
-    reader.readAsDataURL(file);
+      const uploadJson = await uploadRes.json();
+      const imageUrl = uploadJson.secure_url || uploadJson.url;
+      if (!imageUrl) {
+        throw new Error("No image URL returned");
+      }
+      setProfileImage(imageUrl);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("medura:profile-image", imageUrl);
+      }
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imageUrl }),
+      });
+      if (!res.ok) {
+        throw new Error("Could not save profile image");
+      }
+      setProfile((prev) => (prev ? { ...prev, image: imageUrl } : prev));
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const saveProfile = async () => {
@@ -156,10 +193,10 @@ export default function ProfilePage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.back()}
-              className="rounded-full border border-white/20 bg-white/5 p-3 text-white/70"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white/70 transition hover:bg-white/10"
               aria-label="Go back"
             >
-              &lt;
+              <ArrowLeft className="h-4 w-4" />
             </button>
             <div>
               <h1 className="text-xl font-semibold">Profile</h1>
@@ -170,9 +207,10 @@ export default function ProfilePage() {
           </div>
           <button
             onClick={() => signOut({ callbackUrl: "/" })}
-            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80"
+            className="flex items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 text-white/80 transition hover:bg-white/10"
+            aria-label="Log out"
           >
-            Logout
+            <LogOut className="h-4 w-4" />
           </button>
         </div>
 
@@ -189,15 +227,20 @@ export default function ProfilePage() {
                   <div className="h-full w-full bg-gradient-to-br from-white/5 to-white/2" />
                 )}
                 <div className="absolute bottom-1 right-1 flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white">
-                  +
+                  <Camera className="h-4 w-4" />
                 </div>
                 <button
                   type="button"
                   onClick={() => imageInput.current?.click()}
                   className="absolute inset-0 rounded-full border border-white/20 bg-black/40 text-xs opacity-0 transition hover:opacity-100"
                 >
-                  Change
+                  {uploadingImage ? "Uploading..." : "Change"}
                 </button>
+                {uploadingImage ? (
+                  <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  </div>
+                ) : null}
               </div>
               <input
                 ref={imageInput}
@@ -206,6 +249,9 @@ export default function ProfilePage() {
                 className="hidden"
                 onChange={handleImageSelect}
               />
+              {imageError ? (
+                <p className="text-xs text-red-200">{imageError}</p>
+              ) : null}
               <div>
                 <p className="text-lg font-semibold">
                   {profile?.fullName ?? "Your name"}
@@ -219,9 +265,11 @@ export default function ProfilePage() {
             <div className="flex gap-2 lg:ml-auto">
               <button
                 onClick={() => setShowAccount(true)}
-                className="rounded-full bg-[#0b5cff] px-4 py-2 text-sm font-semibold text-white"
+                className="flex items-center justify-center gap-2 rounded-full bg-[#0b5cff] px-4 py-2 text-sm font-semibold text-white"
+                aria-label="Edit profile"
               >
-                Edit profile
+                <Pencil className="h-4 w-4" />
+                <span className="hidden sm:inline">Edit profile</span>
               </button>
             </div>
           </div>
@@ -414,7 +462,6 @@ export default function ProfilePage() {
                   : a.createdAt
                     ? new Date(a.createdAt)
                     : null;
-                const doc = doctors.find((d) => d.id === a.doctorId);
                 return (
                   <div
                     key={a._id ?? a.id}
@@ -422,7 +469,7 @@ export default function ProfilePage() {
                   >
                     <div>
                       <div className="font-semibold">
-                        {doc?.name ?? a.doctorId}
+                        {a.doctorId}
                       </div>
                       <div className="text-sm text-white/60">
                         {dt ? dt.toLocaleString() : "Date pending"}
@@ -450,7 +497,6 @@ export default function ProfilePage() {
                   : a.createdAt
                     ? new Date(a.createdAt)
                     : null;
-                const doc = doctors.find((d) => d.id === a.doctorId);
                 return (
                   <div
                     key={a._id ?? a.id}
@@ -458,7 +504,7 @@ export default function ProfilePage() {
                   >
                     <div>
                       <div className="font-semibold">
-                        {doc?.name ?? a.doctorId}
+                        {a.doctorId}
                       </div>
                       <div className="text-sm text-white/60">
                         {dt ? dt.toLocaleString() : "Date pending"}
