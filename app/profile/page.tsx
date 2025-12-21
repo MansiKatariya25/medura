@@ -377,7 +377,9 @@ export default function ProfilePage() {
               {upcoming.map((a) => {
                 const dt = a.appointmentDate
                   ? new Date(a.appointmentDate)
-                  : new Date(a.createdAt);
+                  : a.createdAt
+                    ? new Date(a.createdAt)
+                    : null;
                 const doc = doctors.find((d) => d.id === a.doctorId);
                 return (
                   <div
@@ -389,7 +391,7 @@ export default function ProfilePage() {
                         {doc?.name ?? a.doctorId}
                       </div>
                       <div className="text-sm text-white/60">
-                        {dt.toLocaleString()}
+                        {dt ? dt.toLocaleString() : "Date pending"}
                       </div>
                     </div>
                     <div className="text-sm text-white/70">{a.status}</div>
@@ -411,7 +413,9 @@ export default function ProfilePage() {
               {past.map((a) => {
                 const dt = a.appointmentDate
                   ? new Date(a.appointmentDate)
-                  : new Date(a.createdAt);
+                  : a.createdAt
+                    ? new Date(a.createdAt)
+                    : null;
                 const doc = doctors.find((d) => d.id === a.doctorId);
                 return (
                   <div
@@ -423,7 +427,7 @@ export default function ProfilePage() {
                         {doc?.name ?? a.doctorId}
                       </div>
                       <div className="text-sm text-white/60">
-                        {dt.toLocaleString()}
+                        {dt ? dt.toLocaleString() : "Date pending"}
                       </div>
                     </div>
                     <div className="text-sm text-white/70">{a.status}</div>
