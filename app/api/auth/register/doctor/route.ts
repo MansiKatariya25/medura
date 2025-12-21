@@ -10,7 +10,7 @@ const doctorSchema = z.object({
   specialization: z.string().min(2).max(80),
   email: z.string().email(),
   password: z.string().min(8).max(72),
-  location: z.string().optional(),
+  location: z.string().optional().nullable(),
 });
 
 export async function POST(req: Request) {
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 12);
 
-  const res = await db.collection("users").insertOne({
+  const userDoc = {
     role: "doctor",
     name: parsed.data.fullName,
     fullName: parsed.data.fullName,
@@ -49,6 +49,25 @@ export async function POST(req: Request) {
     location: parsed.data.location ?? null,
     communityIds: [],
     profileComplete: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const res = await db.collection("users").insertOne(userDoc);
+
+  await db.collection("doctors").insertOne({
+    id: res.insertedId.toString(),
+    name: parsed.data.fullName,
+    specialty: parsed.data.specialization,
+    category: parsed.data.specialization.toLowerCase(),
+    rating: 0,
+    description: "",
+    image: "",
+    emailLower,
+    passwordHash,
+    reviews: "",
+    cloudinaryId: null,
+    location: parsed.data.location ?? null,
     createdAt: new Date(),
     updatedAt: new Date(),
   });

@@ -24,6 +24,7 @@ import {
   Video,
   Plus,
   Loader2,
+  Trash,
 } from "lucide-react";
 
 import { doctors as seedDoctors } from "@/data/doctors";
@@ -144,6 +145,30 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+
+  const formatSummary = (text?: string) => {
+    if (!text) return null;
+    return text
+      .split(/\n+/)
+      .filter(Boolean)
+      .map((line, idx) => {
+        const [label, ...rest] = line.split(":");
+        if (rest.length === 0) {
+          return (
+            <p key={`sum-${idx}`} className="leading-relaxed">
+              {line}
+            </p>
+          );
+        }
+        return (
+          <p key={`sum-${idx}`} className="leading-relaxed">
+            <span className="font-semibold text-white">{label.trim()}:</span>{" "}
+            <span className="text-white/70">{rest.join(":").trim()}</span>
+          </p>
+        );
+      });
+  };
   const [displayedTab, setDisplayedTab] = useState("home");
   const [avatarImage, setAvatarImage] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
@@ -456,9 +481,9 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               />
             ))
             : (showAllCategories
-                ? categoryOptions
-                : categoryOptions.slice(0, collapsedCategoryLimit)
-              ).map((category) => {
+              ? categoryOptions
+              : categoryOptions.slice(0, collapsedCategoryLimit)
+            ).map((category) => {
               const CategoryIcon =
                 categoryIconMap[category.id] || HeartPulse;
               const isActive = activeCategory === category.id;
@@ -790,6 +815,27 @@ export default function HomeDashboard({ userName }: { userName: string }) {
     }
   };
 
+  const handleDeleteDocument = async (id: string) => {
+    setDocError(null);
+    setDeletingDocId(id);
+    try {
+      const res = await fetch("/api/medkey/documents", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Delete failed");
+      }
+      setDocs((prev) => prev.filter((d) => String(d._id) !== String(id)));
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
   const renderTabContent = (tab: string) => {
     if (tab === "home") return renderHomeSections();
     if (tab === "chat") {
@@ -890,24 +936,51 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 docs.map((doc) => (
                   <div
                     key={doc._id}
-                    className="flex items-start justify-between rounded-2xl border border-white/10 bg-white/5 p-3"
+                    className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3"
                   >
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        {doc.title}
-                      </p>
-                      <p className="mt-2 text-sm text-white/60">
-                        {doc.summary || "No summary"}
-                      </p>
+                    <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-black/30">
+                      {doc.mimeType?.startsWith("image/") ? (
+                        <img
+                          src={doc.url}
+                          alt={doc.summaryTitle || doc.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xs text-white/60">
+                          PDF
+                        </div>
+                      )}
                     </div>
-                    <a
-                      href={doc.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
-                    >
-                      View
-                    </a>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold text-white leading-tight">
+                          {doc.summaryTitle || "Document"}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={doc.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
+                          >
+                            View
+                          </a>
+                          <button
+                            onClick={() => handleDeleteDocument(doc._id)}
+                            disabled={deletingDocId === doc._id}
+                            className="rounded-full border border-white/10 p-1 text-white/70 hover:bg-white/10 disabled:opacity-50"
+                            aria-label="Delete document"
+                          >
+                            <Trash className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-sm text-white/60 space-y-1">
+                        {formatSummary(doc.summary) || (
+                          <p className="leading-relaxed">No summary</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))
               )}
