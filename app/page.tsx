@@ -8,20 +8,22 @@ import HowItWorks from "@/components/landing/HowItWorks";
 import Testimonials from "@/components/landing/Testimonials";
 import Footer from "@/components/landing/Footer";
 import NoiseOverlay from "@/components/landing/ui/NoiseOverlay";
+import CommunityAwareness from "@/components/landing/CommunityAwareness";
 
 export default function LandingPage() {
-    return (
-        <main className="min-h-screen w-full bg-[#091E42] text-white">
-            <NoiseOverlay />
-            <Navbar />
-            <Hero />
-            <Stats />
-            <Features />
-            <Ecosystem />
-            <MedKeySpotlight />
-            <HowItWorks />
-            <Testimonials />
-            <Footer />
-        </main>
-    );
+  return (
+    <main className="min-h-screen w-full bg-[#05060B] text-white">
+      <NoiseOverlay />
+      <Navbar />
+      <Hero />
+      <Stats />
+      <Features />
+      <Ecosystem />
+      <CommunityAwareness />
+      <MedKeySpotlight />
+      <HowItWorks />
+      <Testimonials />
+      <Footer />
+    </main>
+  );
 }

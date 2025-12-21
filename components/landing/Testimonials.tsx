@@ -34,21 +34,26 @@ const testimonials = [
 
 export default function Testimonials() {
     return (
-        <section className="py-24 px-4 bg-[#091E42]">
+        <section className="py-24 px-4 bg-[#05060B]">
             <div className="container mx-auto max-w-6xl">
-                <h2 className="mb-12 text-center text-3xl font-bold text-white font-[family-name:var(--font-dm-sans)]">
-                    Trusted by Thousands
-                </h2>
+                <div className="mb-12 text-center">
+                    <h2 className="text-3xl font-bold text-white font-[family-name:var(--font-dm-sans)]">
+                        Trusted by Thousands
+                    </h2>
+                    <p className="mt-3 text-white/60">
+                        Stories from patients and doctors using Medura every day.
+                    </p>
+                </div>
 
                 <div className="grid gap-6 md:grid-cols-3">
                     {testimonials.map((t, index) => (
                         <motion.div
                             key={t.id}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            whileInView={{ opacity: 1, scale: 1 }}
+                            initial={{ opacity: 0, y: 14 }}
+                            whileInView={{ opacity: 1, y: 0 }}
                             viewport={{ once: true }}
                             transition={{ delay: index * 0.1 }}
-                            className="flex flex-col rounded-2xl border border-white/5 bg-white/[0.02] p-8 shadow-xl backdrop-blur-sm hover:bg-white/[0.04]"
+                            className="flex flex-col rounded-2xl border border-white/10 bg-[#0f1116] p-8 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
                         >
                             <div className="mb-4 flex gap-1">
                                 {[...Array(t.stars)].map((_, i) => (
@@ -58,7 +63,7 @@ export default function Testimonials() {
                                     />
                                 ))}
                             </div>
-                            <p className="mb-6 flex-1 text-lg italic text-white/70 leading-relaxed">
+                            <p className="mb-6 flex-1 text-base italic text-white/70 leading-relaxed">
                                 &quot;{t.quote}&quot;
                             </p>
                             <div className="flex items-center gap-3">

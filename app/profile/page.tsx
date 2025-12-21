@@ -71,6 +71,9 @@ export default function ProfilePage() {
   const [savingAvail, setSavingAvail] = useState(false);
   const [availMsg, setAvailMsg] = useState<string | null>(null);
   const imageInput = useRef<HTMLInputElement | null>(null);
+  const profileImageKey = session?.user?.id
+    ? `medura:profile-image:${session.user.id}`
+    : "medura:profile-image";
 
   useEffect(() => {
     const fetchData = async () => {
@@ -93,7 +96,7 @@ export default function ProfilePage() {
               setProfileImage(pJson.profile.image);
               if (typeof window !== "undefined") {
                 window.localStorage.setItem(
-                  "medura:profile-image",
+                  profileImageKey,
                   pJson.profile.image,
                 );
               }
@@ -120,7 +123,7 @@ export default function ProfilePage() {
       }
     };
     fetchData();
-  }, []);
+  }, [profileImageKey, session?.user?.id]);
 
   useEffect(() => {
     if (appointments.length === 0) return;
@@ -162,7 +165,7 @@ export default function ProfilePage() {
         setProfileImage(saved);
       }
     }
-  }, [profileImage]);
+  }, [profileImage, profileImageKey]);
 
   const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -196,7 +199,7 @@ export default function ProfilePage() {
       }
       setProfileImage(imageUrl);
       if (typeof window !== "undefined") {
-        window.localStorage.setItem("medura:profile-image", imageUrl);
+        window.localStorage.setItem(profileImageKey, imageUrl);
       }
       const res = await fetch("/api/profile", {
         method: "PATCH",
@@ -539,6 +542,24 @@ export default function ProfilePage() {
                     ))}
                   </div>
                 ) : null}
+              </div>
+            </div>
+          ) : String(profile?.role || "").toLowerCase() === "ambulance" ? (
+            <div className="rounded-2xl border border-white/10 bg-[#0f1116] p-4 text-white space-y-3">
+              <h3 className="text-lg font-semibold">Service Payments</h3>
+              <p className="text-sm text-white/60">
+                Track payouts for completed emergency services.
+              </p>
+              <div className="rounded-xl border border-white/10 bg-[#11121A] p-4">
+                <div className="text-xs uppercase tracking-wide text-white/50">
+                  Total Earnings
+                </div>
+                <div className="mt-2 text-2xl font-bold">
+                  ₹{profile?.earnings ?? 0}
+                </div>
+              </div>
+              <div className="text-xs text-white/50">
+                Payouts are processed after service completion.
               </div>
             </div>
           ) : (

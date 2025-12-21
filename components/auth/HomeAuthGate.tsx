@@ -18,6 +18,9 @@ export default function HomeAuthGate() {
     if (role === "doctor") {
       router.replace("/doctors");
     }
+    if (role === "ambulance") {
+      router.replace("/ambulance");
+    }
   }, [role, router]);
 
   if (status === "loading") {
@@ -26,7 +29,7 @@ export default function HomeAuthGate() {
 
   if (!session) return <AuthScreen />;
 
-  if (role === "doctor") {
+  if (role === "doctor" || role === "ambulance") {
     return null;
   }
 

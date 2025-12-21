@@ -26,17 +26,19 @@ const steps = [
 
 export default function HowItWorks() {
     return (
-        <section className="relative py-32">
+        <section className="relative py-28 bg-[#05060B]">
             <div className="container mx-auto px-4 max-w-6xl">
-                <div className="text-center mb-20">
+                <div className="text-center mb-16">
                     <h2 className="text-3xl md:text-5xl font-bold bg-clip-text text-transparent bg-linear-to-b from-white to-white/60 font-[family-name:var(--font-dm-sans)]">
                         How Medura Works
                     </h2>
+                    <p className="mt-4 text-white/60">
+                        A simple flow that gets help moving in seconds.
+                    </p>
                 </div>
 
-                <div className="relative grid md:grid-cols-3 gap-12">
-                    {/* Connecting Line (Only visible on Desktop) */}
-                    <div className="hidden md:block absolute top-12 left-[16%] right-[16%] h-0.5 bg-linear-to-r from-blue-500/0 via-blue-500/50 to-blue-500/0" />
+                <div className="relative grid md:grid-cols-3 gap-8">
+                    <div className="hidden md:block absolute top-12 left-[16%] right-[16%] h-px bg-linear-to-r from-[#4D7CFF]/0 via-[#4D7CFF]/40 to-[#4D7CFF]/0" />
 
                     {steps.map((step, i) => (
                         <motion.div
@@ -47,16 +49,16 @@ export default function HowItWorks() {
                             transition={{ delay: i * 0.2 }}
                             className="relative flex flex-col items-center text-center group"
                         >
-                            <div className="relative z-10 w-24 h-24 rounded-2xl bg-[#091E42] border border-white/10 flex items-center justify-center mb-6 shadow-2xl group-hover:border-blue-500/50 transition duration-300">
-                                <div className="absolute inset-0 bg-blue-500/10 blur-xl opacity-0 group-hover:opacity-100 transition duration-300" />
-                                <step.icon className="w-10 h-10 text-white/80 group-hover:text-blue-400 transition duration-300" />
-                                <div className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm border-4 border-[#091E42]">
+                            <div className="relative z-10 w-24 h-24 rounded-2xl bg-[#0f1116] border border-white/10 flex items-center justify-center mb-6 shadow-2xl group-hover:border-[#4D7CFF]/60 transition duration-300">
+                                <div className="absolute inset-0 bg-[#4D7CFF]/10 blur-xl opacity-0 group-hover:opacity-100 transition duration-300" />
+                                <step.icon className="w-10 h-10 text-white/80 group-hover:text-[#4D7CFF] transition duration-300" />
+                                <div className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-[#4D7CFF] text-white flex items-center justify-center font-bold text-sm border-4 border-[#0f1116]">
                                     {step.id}
                                 </div>
                             </div>
 
                             <h3 className="text-xl font-bold text-white mb-3 font-[family-name:var(--font-dm-sans)]">{step.title}</h3>
-                            <p className="text-white/50 max-w-xs leading-relaxed">
+                            <p className="text-white/60 max-w-xs leading-relaxed">
                                 {step.description}
                             </p>
                         </motion.div>

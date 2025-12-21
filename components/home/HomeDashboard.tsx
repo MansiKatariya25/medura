@@ -61,6 +61,8 @@ const navItems = [
   { id: "profile", label: "Profile", icon: User },
 ];
 
+const profileImageKey = "medura:profile-image";
+
 function useLocationLabel() {
   const initial =
     typeof navigator !== "undefined" && "geolocation" in navigator
@@ -366,18 +368,18 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   useEffect(() => {
     const read = () => {
       if (typeof window === "undefined") return;
-      const stored = window.localStorage.getItem("medura:profile-image");
+      const stored = window.localStorage.getItem(profileImageKey);
       setAvatarImage(stored);
     };
     read();
     const listener = (event: StorageEvent) => {
-      if (event.key === "medura:profile-image") {
+      if (event.key === profileImageKey) {
         read();
       }
     };
     window.addEventListener("storage", listener);
     return () => window.removeEventListener("storage", listener);
-  }, []);
+  }, [profileImageKey]);
 
   useEffect(() => {
     return () => {

@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Medura",
   description: "Book doctors and manage your care.",
+  icons: {
+    icon: "./medura.png",
+  },
 };
 
 export default function RootLayout({
