@@ -84,7 +84,12 @@ export default function AuthScreen() {
         callbackUrl: "/home",
       });
 
-      if (signInRes?.error || !signInRes?.ok) {
+      if (
+        !signInRes ||
+        signInRes.error ||
+        signInRes.ok !== true ||
+        signInRes.status !== 200
+      ) {
         setError("Invalid email or password.");
         return;
       }
