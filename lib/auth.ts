@@ -33,6 +33,11 @@ export const authOptions: NextAuthOptions = {
         const client = await clientPromise;
         const db = client.db();
 
+        const roleFilter =
+          role === "patient"
+            ? { $or: [{ role: "patient" }, { role: { $exists: false } }] }
+            : { role };
+
         const user = await db.collection("users").findOne<{
           _id: unknown;
           email: string;
@@ -40,13 +45,9 @@ export const authOptions: NextAuthOptions = {
           image?: string | null;
           passwordHash?: string;
           role?: string;
-        }>({ emailLower });
+        }>({ emailLower, ...roleFilter });
 
         if (!user?.passwordHash) return null;
-
-        if (user.role && user.role !== role) {
-          return null;
-        }
 
         const ok = await bcrypt.compare(parsed.data.password, user.passwordHash);
         if (!ok) return null;

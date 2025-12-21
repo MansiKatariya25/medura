@@ -17,7 +17,7 @@ export default function Navbar() {
     >
       <div className="flex w-full max-w-5xl items-center justify-between rounded-2xl border border-white/10 bg-black/40 px-6 py-3 backdrop-blur-xl supports-[backdrop-filter]:bg-black/20">
         {/* Logo */}
-        <Link href="/landing" className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
           <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600/20 text-blue-500">
             <Activity className="h-5 w-5 animate-pulse" />
             <div className="absolute inset-0 animate-ping rounded-lg bg-blue-500/20" />
@@ -75,10 +75,24 @@ export default function Navbar() {
           >
             <nav className="flex flex-col gap-4">
               <Link
+                href="/auth/patient"
+                className="flex items-center justify-between rounded-xl bg-white/5 p-4 text-white hover:bg-white/10"
+              >
+                <span>For Patients</span>
+                <Activity className="h-4 w-4 text-blue-500" />
+              </Link>
+              <Link
                 href="/auth/doctor"
                 className="flex items-center justify-between rounded-xl bg-white/5 p-4 text-white hover:bg-white/10"
               >
                 <span>For Doctors</span>
+                <Activity className="h-4 w-4 text-blue-500" />
+              </Link>
+              <Link
+                href="/auth/ambulance"
+                className="flex items-center justify-between rounded-xl bg-white/5 p-4 text-white hover:bg-white/10"
+              >
+                <span>For Ambulance</span>
                 <Activity className="h-4 w-4 text-blue-500" />
               </Link>
               <button className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 font-semibold text-white">
