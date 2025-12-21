@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = ambulanceSchema.safeParse(json);
   if (!parsed.success) {
-    const pwdIssue = parsed.error.errors.find((e) => e.path?.[0] === "password");
+    const pwdIssue = parsed.error.issues.find((e) => e.path?.[0] === "password");
     if (pwdIssue) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
