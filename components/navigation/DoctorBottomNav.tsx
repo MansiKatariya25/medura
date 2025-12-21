@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Bell, FileText, Home, User, Users } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
 type NotificationItem = {
@@ -16,7 +16,6 @@ type NotificationItem = {
 export default function DoctorBottomNav() {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
@@ -58,11 +57,9 @@ export default function DoctorBottomNav() {
     if (pathname === "/community") return "community";
     if (pathname === "/profile") return "profile";
     if (pathname === "/notifications") return "notifications";
-    if (pathname === "/doctors/medkey") {
-      return "medkey";
-    }
+    if (pathname === "/doctors/medkey") return "medkey";
     return "";
-  }, [pathname, searchParams]);
+  }, [pathname]);
 
   if (!isDoctor || hideForChat) return null;
 
