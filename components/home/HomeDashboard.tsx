@@ -825,6 +825,25 @@ export default function HomeDashboard({ userName }: { userName: string }) {
             </button>
           ) : null}
 
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: "Blood", value: medStats.bloodGroup || "—", color: "text-red-400 bg-red-400/10" },
+              { label: "Height", value: medStats.height || "—", color: "text-blue-400 bg-blue-400/10" },
+              { label: "Weight", value: medStats.weight || "—", color: "text-orange-400 bg-orange-400/10" },
+              { label: "Allergies", value: medStats.allergies || "—", color: "text-green-400 bg-green-400/10" },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className={`flex flex-col items-center justify-center rounded-2xl border border-white/5 p-3 ${stat.color}`}
+              >
+                <p className="text-[10px] font-medium uppercase tracking-wider opacity-70">
+                  {stat.label}
+                </p>
+                <p className="text-sm font-bold">{stat.value}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="rounded-[32px] border border-white/10 bg-[#11121A]/80 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
@@ -892,53 +911,6 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                   </div>
                 ))
               )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { label: "Blood", value: medStats.bloodGroup || "—", color: "text-red-400 bg-red-400/10" },
-              { label: "Height", value: medStats.height || "—", color: "text-blue-400 bg-blue-400/10" },
-              { label: "Weight", value: medStats.weight || "—", color: "text-orange-400 bg-orange-400/10" },
-              { label: "Allergies", value: medStats.allergies || "—", color: "text-green-400 bg-green-400/10" },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className={`flex flex-col items-center justify-center rounded-2xl border border-white/5 p-3 ${stat.color}`}
-              >
-                <p className="text-[10px] font-medium uppercase tracking-wider opacity-70">
-                  {stat.label}
-                </p>
-                <p className="text-sm font-bold">{stat.value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-[32px] border border-white/10 bg-[#11121A]/80 p-6 md:flex md:items-center md:justify-between">
-            <div className="flex flex-col md:w-1/2">
-              <h2 className="text-xl font-semibold text-white">Records Vault</h2>
-              <p className="text-sm text-white/60">
-                Store and access your medical records in one place.
-              </p>
-            </div>
-            <div className="mt-4 flex w-full flex-col gap-3 md:mt-0 md:w-1/2 md:flex-row md:items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                <input
-                  placeholder="Search records..."
-                  value={recordSearchQuery}
-                  onChange={(e) => setRecordSearchQuery(e.target.value)}
-                  className="w-full rounded-xl bg-white/5 py-3 pl-9 pr-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-white/20"
-                />
-              </div>
-              <button
-                onClick={() => docInputRef.current?.click()}
-                className="flex items-center justify-center gap-2 rounded-xl bg-[#4D7CFF] px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-              >
-                <Plus className="h-4 w-4" />
-                <span className="hidden md:inline">Upload</span>
-                <span className="md:hidden">Upload New</span>
-              </button>
             </div>
           </div>
           <input
