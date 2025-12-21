@@ -54,6 +54,7 @@ export default function CommunityDetailPage() {
   const [joinedIds, setJoinedIds] = useState<string[]>([]);
   const [messages, setMessages] = useState<CommunityMessage[]>([]);
   const [composer, setComposer] = useState("");
+  const [onlineCount, setOnlineCount] = useState(0);
   const [wsStatus, setWsStatus] = useState<WsStatus>("connecting");
   const [showInfo, setShowInfo] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -81,6 +82,7 @@ export default function CommunityDetailPage() {
   const scrollRafRef = useRef<number | null>(null);
   const [currentDateLabel, setCurrentDateLabel] = useState("Today");
   const sentMessageIdsRef = useRef<Set<string>>(new Set());
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentUserName = session?.user?.name || "You";
 
@@ -88,7 +90,9 @@ export default function CommunityDetailPage() {
     if (!session?.user?.id) return;
     (async () => {
       try {
-        const res = await fetch("/api/user/communities");
+        const res = await fetch("/api/user/communities", {
+          credentials: "include",
+        });
         if (!res.ok) return;
         const data = await res.json();
         const ids = (data?.communityIds || []).map((v: string) => String(v));
@@ -99,6 +103,7 @@ export default function CommunityDetailPage() {
         // ignore
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id]);
 
   useEffect(() => {
@@ -175,79 +180,110 @@ export default function CommunityDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!id) return;
-    const url =
-      process.env.NEXT_PUBLIC_WS_URL ||
-      `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host
-      }/ws/community`;
-    try {
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
+    if (typeof window === "undefined" || !id) return;
 
-      ws.addEventListener("open", () => {
-        setWsStatus("connected");
-        ws.send(
-          JSON.stringify({
-            type: "identify",
-            userId: session?.user?.id || "anon",
-            userName: currentUserName,
-          }),
-        );
-        ws.send(
-          JSON.stringify({
-            type: "join",
-            groupId: id,
-          }),
-        );
-      });
-      ws.addEventListener("close", () => setWsStatus("disconnected"));
-      ws.addEventListener("error", () => setWsStatus("disconnected"));
-      ws.addEventListener("message", (event) => {
-        try {
-          const payload = JSON.parse(event.data) as {
-            messageId: string;
-            type?: string;
-            groupId?: string;
-            from?: string;
-            text?: string;
-            time?: number;
-            authorId?: string | null;
-          };
-          if (payload.groupId !== id) return;
-          if (payload.type === "message" && payload.text) {
-            if (payload.messageId && sentMessageIdsRef.current.has(payload.messageId)) {
-              return;
-            }
-            if (payload.from && payload.from === currentUserName) {
-              return;
-            }
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `msg-${Date.now()}`,
-                communityId: id,
-                authorName: payload.from || "Member",
-                authorId: payload.authorId || null,
-                text: payload.text || "",
-                createdAt: payload.time
-                  ? new Date(payload.time).toISOString()
-                  : new Date().toISOString(),
-              },
-            ]);
+    const connect = () => {
+      const url =
+        process.env.NEXT_PUBLIC_WS_URL ||
+        `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/community`;
+      try {
+        const ws = new WebSocket(url);
+        wsRef.current = ws;
+
+        ws.addEventListener("open", () => {
+          setWsStatus("connected");
+          if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
           }
-        } catch {
-          // ignore
-        }
-      });
+          // at minimum the current user is online once joined
+          setOnlineCount((prev) => Math.max(prev, 1));
+          ws.send(
+            JSON.stringify({
+              type: "identify",
+              userId: session?.user?.id || "anon",
+              userName: currentUserName,
+            }),
+          );
+          ws.send(
+            JSON.stringify({
+              type: "join",
+              groupId: id,
+            }),
+          );
+        });
 
-      return () => {
-        ws.close();
-      };
-    } catch {
-      setWsStatus("disconnected");
-    }
-  }, [id]);
+        const scheduleReconnect = () => {
+          setWsStatus("disconnected");
+          setOnlineCount(0);
+          if (reconnectTimerRef.current) return;
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            connect();
+          }, 2000);
+        };
+
+        ws.addEventListener("close", scheduleReconnect);
+        ws.addEventListener("error", scheduleReconnect);
+        ws.addEventListener("message", (event) => {
+          try {
+            const payload = JSON.parse(event.data) as {
+              messageId?: string;
+              type?: string;
+              groupId?: string;
+              from?: string;
+              text?: string;
+              time?: number;
+              authorId?: string | null;
+              count?: number;
+            };
+            if (payload.groupId !== id) return;
+            if (payload.type === "online") {
+              setOnlineCount(
+                typeof payload.count === "number" ? payload.count : 1,
+              );
+              return;
+            }
+            if (payload.type === "message" && payload.text) {
+              if (payload.messageId && sentMessageIdsRef.current.has(payload.messageId)) {
+                return;
+              }
+              if (payload.from && payload.from === currentUserName) {
+                return;
+              }
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: `msg-${Date.now()}`,
+                  communityId: id,
+                  authorName: payload.from || "Member",
+                  authorId: payload.authorId || null,
+                  text: payload.text || "",
+                  createdAt: payload.time
+                    ? new Date(payload.time).toISOString()
+                    : new Date().toISOString(),
+                },
+              ]);
+            }
+          } catch {
+            // ignore
+          }
+        });
+      } catch {
+        setWsStatus("disconnected");
+      }
+    };
+
+    connect();
+
+    return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      wsRef.current?.close();
+    };
+  }, [id, currentUserName, session?.user?.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -456,8 +492,10 @@ export default function CommunityDetailPage() {
 
   const headerSubtitle = useMemo(() => {
     if (!community) return "";
-    return `${community.members ?? 0} members`;
-  }, [community]);
+    const membersPart = `${community.members ?? 0} members`;
+    const onlinePart = `${onlineCount} online`;
+    return `${onlinePart} • ${membersPart}`;
+  }, [community, onlineCount]);
 
   const visibleMessages = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -520,7 +558,13 @@ export default function CommunityDetailPage() {
     return (
       <div className="min-h-screen bg-[#05060B] px-4 py-6 text-white">
         <button
-          onClick={() => router.back()}
+          onClick={() => {
+            if (document.referrer && document.referrer.includes("/community")) {
+              router.back();
+            } else {
+              router.push("/community");
+            }
+          }}
           className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/70"
         >
           Back to communities
@@ -537,11 +581,11 @@ export default function CommunityDetailPage() {
       <header className="sticky top-0 z-10 border-b border-white/10 bg-[#0B0C12]/95 px-4 py-4 backdrop-blur">
         <div className="mx-auto flex w-full max-w-5xl items-center gap-3">
           <button
-            onClick={() => router.back()}
-            className="rounded-full border border-white/10 bg-white/5 p-2 text-white/70"
-            aria-label="Back"
-          >
-            <ArrowLeft className="h-4 w-4" />
+          onClick={() => router.back()}
+          className="rounded-full border border-white/10 bg-white/5 p-2 text-white/70"
+          aria-label="Back"
+        >
+          <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-white/10 text-xs font-semibold">
             {community?.avatarUrl ? (

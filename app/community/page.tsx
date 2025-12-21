@@ -59,7 +59,9 @@ export default function CommunityPage() {
     if (!session?.user?.id) return;
     (async () => {
       try {
-        const res = await fetch("/api/user/communities");
+        const res = await fetch("/api/user/communities", {
+          credentials: "include",
+        });
         if (!res.ok) return;
         const data = await res.json();
         const serverIds = (data?.communityIds || []).map((v: string) => String(v));
@@ -85,7 +87,8 @@ export default function CommunityPage() {
         // ignore
       }
     })();
-  }, [session?.user?.id, communities]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (!("geolocation" in navigator)) return;
@@ -188,6 +191,10 @@ export default function CommunityPage() {
   const handleJoin = async (id: string) => {
     if (joinedIds.includes(id)) return;
     const userId = session?.user?.id ? String(session.user.id) : null;
+    if (!userId) {
+      setJoinedIds((prev) => [...prev, id]);
+      return;
+    }
     setJoinedIds((prev) => [...prev, id]);
     setCommunities((prev) =>
       prev.map((community) =>
@@ -197,16 +204,16 @@ export default function CommunityPage() {
       ),
     );
     try {
-      const payload: Record<string, unknown> = { membersDelta: 1 };
-      if (userId) {
-        payload.userId = userId;
-        payload.action = "join";
-      }
       await fetch(`/api/communities/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          membersDelta: 1,
+          action: "join",
+          userId,
+        }),
       });
+      await fetch("/api/user/communities", { cache: "no-store" }).catch(() => null);
     } catch {
       // best-effort
     }
@@ -434,7 +441,7 @@ export default function CommunityPage() {
             onClick={() => handleTabChange("public")}
           >
             <span className="inline-flex items-center gap-2">
-              Public communities
+            Communities
               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white/15 px-1 text-[10px] text-white/80">
                 {publicCount}
               </span>
