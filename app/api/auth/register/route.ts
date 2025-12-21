@@ -34,9 +34,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid input." }, { status: 400 });
   }
 
-  const meduraId =
-    `${parsed.data.state.slice(0, 4).toUpperCase().padEnd(4, "X")}` +
-    Math.floor(1000 + Math.random() * 9000).toString();
+  const meduraId = Math.floor(10_000_000 + Math.random() * 90_000_000).toString();
 
   const emailLower = parsed.data.email.toLowerCase();
   const client = await clientPromise;
