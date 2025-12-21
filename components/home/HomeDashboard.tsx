@@ -456,9 +456,9 @@ export default function HomeDashboard({ userName }: { userName: string }) {
               />
             ))
             : (showAllCategories
-                ? categoryOptions
-                : categoryOptions.slice(0, collapsedCategoryLimit)
-              ).map((category) => {
+              ? categoryOptions
+              : categoryOptions.slice(0, collapsedCategoryLimit)
+            ).map((category) => {
               const CategoryIcon =
                 categoryIconMap[category.id] || HeartPulse;
               const isActive = activeCategory === category.id;

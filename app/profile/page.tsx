@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
+import { doctors } from "@/data/doctors";
 import { LogOut, Loader2, Camera, ArrowLeft, Pencil } from "lucide-react";
 
 type Profile = {
@@ -11,6 +12,9 @@ type Profile = {
   gender?: "male" | "female" | "other" | "prefer_not_say" | "";
   email?: string;
   image?: string;
+  specialization?: string;
+  location?: string | null;
+  role?: string | null;
 };
 
 type Appointment = {
@@ -24,6 +28,7 @@ type Appointment = {
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -34,6 +39,8 @@ export default function ProfilePage() {
   const [gender, setGender] = useState<
     "male" | "female" | "other" | "prefer_not_say" | ""
   >("");
+  const [specialization, setSpecialization] = useState("");
+  const [location, setLocation] = useState("");
   const [showAccount, setShowAccount] = useState(false);
   const [showSecurity, setShowSecurity] = useState(false);
 
@@ -61,6 +68,8 @@ export default function ProfilePage() {
             setFullName(pJson.profile.fullName ?? "");
             setDob(pJson.profile.dob ?? "");
             setGender(pJson.profile.gender ?? "");
+            setSpecialization(pJson.profile.specialization ?? "");
+            setLocation(pJson.profile.location ?? "");
             if (pJson.profile.image) {
               setProfileImage(pJson.profile.image);
               if (typeof window !== "undefined") {
@@ -150,11 +159,17 @@ export default function ProfilePage() {
       const res = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName, dob, gender }),
+        body: JSON.stringify({
+          fullName,
+          dob,
+          gender,
+          specialization: (session?.user as any)?.role === "doctor" ? specialization : undefined,
+          location: (session?.user as any)?.role === "doctor" ? location : undefined,
+        }),
       });
       const j = await res.json();
       if (j?.ok) {
-        setProfile({ ...profile, fullName, dob, gender });
+        setProfile({ ...profile, fullName, dob, gender, specialization, location });
       }
     } catch (err) {
       console.error(err);
@@ -288,6 +303,26 @@ export default function ProfilePage() {
                     onChange={(e) => setFullName(e.target.value)}
                     className="mt-1 w-full rounded-md border border-white/10 bg-transparent px-3 py-2 text-white/90"
                   />
+                  {(session?.user as any)?.role === "doctor" ? (
+                    <>
+                      <label className="block text-sm text-white/70">
+                        Specialization
+                      </label>
+                      <input
+                        value={specialization}
+                        onChange={(e) => setSpecialization(e.target.value)}
+                        className="mt-1 w-full rounded-md border border-white/10 bg-transparent px-3 py-2 text-white/90"
+                      />
+                      <label className="block text-sm text-white/70">
+                        Location
+                      </label>
+                      <input
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                        className="mt-1 w-full rounded-md border border-white/10 bg-transparent px-3 py-2 text-white/90"
+                      />
+                    </>
+                  ) : null}
                   <div>
                     <label className="block text-sm text-white/70">
                       Date of birth
