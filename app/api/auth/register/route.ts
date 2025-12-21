@@ -31,7 +31,17 @@ export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = registerSchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input." }, { status: 400 });
+    const pwdIssue = parsed.error.errors.find((e) => e.path?.[0] === "password");
+    if (pwdIssue) {
+      return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
+    }
+    const msg = parsed.error.errors
+      .map((e) => {
+        const path = Array.isArray(e.path) && e.path.length ? e.path.join(".") : "";
+        return path ? `${path}: ${e.message}` : e.message;
+      })
+      .join("; ");
+    return NextResponse.json({ error: msg || "Invalid input." }, { status: 400 });
   }
 
   const meduraId = Math.floor(10_000_000 + Math.random() * 90_000_000).toString();
