@@ -56,11 +56,10 @@ export async function POST(req: Request) {
 
   // Summarize via OpenAI if available
   let summary = "Summary not available.";
+  let summaryTitle = "Document";
   if (process.env.OPENAI_API_KEY) {
     try {
-      const userContent: any[] = [
-        { type: "text", text: `Title: ${title}` },
-      ];
+      const userContent: any[] = [{ type: "text", text: `File name: ${title}` }];
       if (mimeType.startsWith("image/")) {
         userContent.push({ type: "image_url", image_url: { url } });
       } else {
@@ -72,13 +71,14 @@ export async function POST(req: Request) {
           {
             role: "system",
             content:
-              "Summarize the medical document in under 60 words. If image: read visible text. If pdf: infer from filename/URL.",
+              "You are a medical document summarizer. Respond ONLY with compact JSON: {\"title\": string, \"summary\": string}. Keep summary <= 60 words. If data missing, use concise placeholders.",
           },
           {
             role: "user",
             content: userContent,
           },
         ],
+        response_format: { type: "json_object" },
       };
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -90,7 +90,15 @@ export async function POST(req: Request) {
       });
       const data = await res.json();
       const text = data?.choices?.[0]?.message?.content;
-      if (text) summary = text;
+      if (text) {
+        try {
+          const parsed = JSON.parse(text);
+          summary = parsed.summary || summary;
+          summaryTitle = parsed.title || summaryTitle;
+        } catch {
+          summary = text;
+        }
+      }
     } catch {
       // ignore summarization errors
     }
@@ -99,6 +107,7 @@ export async function POST(req: Request) {
   const doc = {
     userId: session.user.id,
     title,
+    summaryTitle,
     url,
     mimeType,
     summary,
@@ -108,4 +117,27 @@ export async function POST(req: Request) {
 
   const result = await db.collection("documents").insertOne(doc);
   return NextResponse.json({ document: { ...doc, _id: result.insertedId } });
+}
+
+export async function DELETE(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const json = await req.json().catch(() => null);
+  const id = typeof json?.id === "string" ? json.id : null;
+  if (!id) {
+    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  }
+  const client = await clientPromise;
+  const db = client.db();
+  const filter = {
+    _id: ObjectId.isValid(id) ? new ObjectId(id) : id,
+    userId: session.user.id,
+  };
+  const res = await db.collection("documents").deleteOne(filter);
+  if (res.deletedCount === 0) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true });
 }

@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     ? await bcrypt.hash(parsed.data.password, 12)
     : null;
 
-  const res = await db.collection("users").insertOne({
+  const userDoc = {
     role: "ambulance",
     ambulanceNumber: parsed.data.ambulanceNumber,
     riderName: parsed.data.riderName,
@@ -66,6 +66,20 @@ export async function POST(req: Request) {
     location: parsed.data.location ?? null,
     communityIds: [],
     profileComplete: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const res = await db.collection("users").insertOne(userDoc);
+
+  await db.collection("ambulances").insertOne({
+    id: res.insertedId.toString(),
+    riderName: parsed.data.riderName,
+    ambulanceNumber: parsed.data.ambulanceNumber,
+    phoneNumber: parsed.data.phoneNumber,
+    emailLower,
+    passwordHash,
+    location: parsed.data.location ?? null,
     createdAt: new Date(),
     updatedAt: new Date(),
   });

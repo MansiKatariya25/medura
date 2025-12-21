@@ -58,7 +58,7 @@ export default function DoctorBottomNav() {
     if (pathname === "/community") return "community";
     if (pathname === "/profile") return "profile";
     if (pathname === "/notifications") return "notifications";
-    if (pathname === "/home" && searchParams.get("tab") === "medkey") {
+    if (pathname === "/doctors/medkey") {
       return "medkey";
     }
     return "";
@@ -72,7 +72,7 @@ export default function DoctorBottomNav() {
         {[
           { id: "home", label: "Home", icon: Home, href: "/doctors" },
           { id: "community", label: "Community", icon: Users, href: "/community" },
-          { id: "medkey", label: "MedKey", icon: FileText, href: "/home?tab=medkey" },
+          { id: "medkey", label: "MedKey", icon: FileText, href: "/doctors/medkey" },
           { id: "profile", label: "Profile", icon: User, href: "/profile" },
         ].map((item) => {
           const isActive = activeKey === item.id;

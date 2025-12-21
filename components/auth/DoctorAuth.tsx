@@ -9,6 +9,18 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 
+const specializationOptions = [
+  { label: "Select specialization", value: "" },
+  { label: "General Physician", value: "general" },
+  { label: "Cardiologist", value: "cardio" },
+  { label: "Neurologist", value: "neuro" },
+  { label: "Pediatrician", value: "pediatric" },
+  { label: "Dermatologist", value: "derma" },
+  { label: "Orthopedic", value: "ortho" },
+  { label: "Psychiatrist", value: "psychiatry" },
+  { label: "Gynecologist", value: "gyn" },
+];
+
 export default function DoctorAuth() {
   const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -86,7 +98,13 @@ export default function DoctorAuth() {
                 <Input label="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Input label="Date of birth" type="date" value={dob} onChange={(e) => setDob(e.target.value)} required />
-                  <Input label="Specialization" value={specialization} onChange={(e) => setSpecialization(e.target.value)} required />
+                  <Select
+                    label="Specialization"
+                    value={specialization}
+                    onChange={(e) => setSpecialization(e.target.value)}
+                    options={specializationOptions}
+                    required
+                  />
                 </div>
               </>
             ) : null}
