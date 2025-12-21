@@ -11,7 +11,7 @@ export default function Ecosystem() {
             <div className="container mx-auto max-w-6xl">
                 <div className="mb-16 text-center">
                     <span className="text-blue-500 font-semibold tracking-wider text-sm uppercase">The Ecosystem</span>
-                    <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl font-[family-name:var(--font-dm-sans)]">
+                    <h2 className="mt-2 text-3xl font-bold text-white sm:text-4xl font-(family-name:--font-dm-sans)">
                         Built for Everyone
                     </h2>
                     <p className="mt-4 text-white/60">
@@ -35,6 +35,8 @@ export default function Ecosystem() {
                                 src="https://res.cloudinary.com/dr3hkbpmr/image/upload/v1766314196/medura/landing/landing-02.jpg"
                                 alt="Happy Patient"
                                 fill
+                                sizes="(min-width: 768px) 50vw, 100vw"
+                                unoptimized
                                 className="object-cover"
                             />
                             <div className="absolute inset-0 bg-[#091E42]/80 mix-blend-multiply" />
@@ -44,7 +46,7 @@ export default function Ecosystem() {
                             <div className="h-12 w-12 bg-blue-500 rounded-xl flex items-center justify-center mb-6">
                                 <User className="h-6 w-6 text-white" />
                             </div>
-                            <h3 className="text-2xl font-bold text-white font-[family-name:var(--font-dm-sans)]">For Patients</h3>
+                            <h3 className="text-2xl font-bold text-white font-(family-name:--font-dm-sans)">For Patients</h3>
                             <p className="mt-2 text-white/60">Fastest response when you need it most.</p>
 
                             <ul className="mt-8 space-y-4">
@@ -77,6 +79,8 @@ export default function Ecosystem() {
                                 src="https://res.cloudinary.com/dr3hkbpmr/image/upload/v1766314199/medura/landing/landing-03.jpg"
                                 alt="Doctor"
                                 fill
+                                sizes="(min-width: 768px) 50vw, 100vw"
+                                unoptimized
                                 className="object-cover"
                             />
                             <div className="absolute inset-0 bg-[#091E42]/80 mix-blend-multiply" />
@@ -86,7 +90,7 @@ export default function Ecosystem() {
                             <div className="h-12 w-12 bg-green-500 rounded-xl flex items-center justify-center mb-6">
                                 <Stethoscope className="h-6 w-6 text-white" />
                             </div>
-                            <h3 className="text-2xl font-bold text-white font-[family-name:var(--font-dm-sans)]">For Doctors</h3>
+                            <h3 className="text-2xl font-bold text-white font-(family-name:--font-dm-sans)">For Doctors</h3>
                             <p className="mt-2 text-white/60">Streamlined triage and patient management.</p>
 
                             <ul className="mt-8 space-y-4">
