@@ -14,7 +14,7 @@ export async function GET(
     const filter = ObjectId.isValid(id)
       ? { _id: new ObjectId(id) }
       : { _id: id };
-    const doc = await db.collection("communities").findOne(filter);
+    const doc = await db.collection("communities").findOne(filter as any);
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const idString = doc?._id?.toString?.() ?? id;
     const memberCount = await db
@@ -49,7 +49,7 @@ export async function PATCH(
     const editableFields = ["name", "description", "locationName", "tags", "avatarUrl"];
     const hasEdits = editableFields.some((field) => json?.[field] !== undefined);
     if (hasEdits || (json?.latitude !== undefined && json?.longitude !== undefined)) {
-      const existing = await db.collection("communities").findOne(filter, {
+      const existing = await db.collection("communities").findOne(filter as any, {
         projection: { createdBy: 1 },
       });
       const requesterId = typeof json?.requesterId === "string" ? json.requesterId : null;
@@ -76,7 +76,7 @@ export async function PATCH(
       }
     }
     const res = await db.collection("communities").findOneAndUpdate(
-      filter,
+      filter as any,
       update,
       { returnDocument: "after" }
     );

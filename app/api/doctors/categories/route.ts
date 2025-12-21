@@ -20,7 +20,7 @@ export async function GET() {
       .distinct("category");
 
     const categories = (rawCategories || [])
-      .filter((value) => typeof value === "string" && value.trim())
+      .filter((value): value is string => typeof value === "string" && !!value.trim())
       .map((value) => value.trim())
       .filter((value, index, arr) => arr.indexOf(value) === index)
       .map((value) => ({ id: value, label: titleCase(value) }));

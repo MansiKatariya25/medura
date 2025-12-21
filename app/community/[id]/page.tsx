@@ -165,7 +165,7 @@ export default function CommunityDetailPage() {
       (pos) => {
         setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       },
-      () => {},
+      () => { },
       { enableHighAccuracy: true, timeout: 6000 }
     );
   }, []);
@@ -175,8 +175,7 @@ export default function CommunityDetailPage() {
     if (!id) return;
     const url =
       process.env.NEXT_PUBLIC_WS_URL ||
-      `${window.location.protocol === "https:" ? "wss" : "ws"}://${
-        window.location.host
+      `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host
       }/ws/community`;
     try {
       const ws = new WebSocket(url);
@@ -209,30 +208,31 @@ export default function CommunityDetailPage() {
             text?: string;
             time?: number;
             authorId?: string | null;
+            messageId?: string;
           };
           if (payload.groupId !== id) return;
-            if (payload.type === "message" && payload.text) {
-              if (payload.messageId && sentMessageIdsRef.current.has(payload.messageId)) {
-                return;
-              }
-              if (payload.from && payload.from === currentUserName) {
-                return;
-              }
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `msg-${Date.now()}`,
-                  communityId: id,
-                  authorName: payload.from || "Member",
-                  authorId: payload.authorId || null,
-                  text: payload.text,
-                  createdAt: payload.time
-                    ? new Date(payload.time).toISOString()
-                    : undefined,
-                },
-              ]);
+          if (payload.type === "message" && payload.text) {
+            if (payload.messageId && sentMessageIdsRef.current.has(payload.messageId)) {
+              return;
             }
-          } catch {
+            if (payload.from && payload.from === currentUserName) {
+              return;
+            }
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `msg-${Date.now()}`,
+                communityId: id,
+                authorName: payload.from || "Member",
+                authorId: payload.authorId || null,
+                text: payload.text || "",
+                createdAt: payload.time
+                  ? new Date(payload.time).toISOString()
+                  : undefined,
+              },
+            ]);
+          }
+        } catch {
           // ignore
         }
       });
@@ -587,11 +587,11 @@ export default function CommunityDetailPage() {
           }}
           className="flex-1 space-y-4 rounded-[24px] border border-white/10 bg-[#0E1017] px-4 pb-4 pt-10 overflow-y-auto"
         >
-        <div className="sticky top-2 z-20 flex items-center justify-center -translate-y-6 pointer-events-none">
-          <span className="rounded-full border border-white/15 bg-[#0B0C12]/85 px-3 py-1 text-[11px] text-white/70 backdrop-blur">
-            {currentDateLabel || "Today"}
-          </span>
-        </div>
+          <div className="sticky top-2 z-20 flex items-center justify-center -translate-y-6 pointer-events-none">
+            <span className="rounded-full border border-white/15 bg-[#0B0C12]/85 px-3 py-1 text-[11px] text-white/70 backdrop-blur">
+              {currentDateLabel || "Today"}
+            </span>
+          </div>
           {loadingMessages ? (
             Array.from({ length: 6 }).map((_, idx) => (
               <div key={`msg-skel-${idx}`} className="flex justify-start">
@@ -612,9 +612,9 @@ export default function CommunityDetailPage() {
                   msg.authorName === currentUserName;
                 const time = msg.createdAt
                   ? new Date(msg.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
                   : "";
                 return [
                   showLabel && label !== currentDateLabel ? (
@@ -635,11 +635,10 @@ export default function CommunityDetailPage() {
                     className={`flex ${isMine ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[78%] rounded-[20px] px-4 py-3 text-sm ${
-                        isMine
-                          ? "bg-[#1F3A67] text-white"
-                          : "bg-[#1B1C24] text-white/90"
-                      }`}
+                      className={`max-w-[78%] rounded-[20px] px-4 py-3 text-sm ${isMine
+                        ? "bg-[#1F3A67] text-white"
+                        : "bg-[#1B1C24] text-white/90"
+                        }`}
                     >
                       <div className="flex items-center justify-between gap-3 text-[11px] text-white/50">
                         <span className="truncate">
@@ -719,12 +718,12 @@ export default function CommunityDetailPage() {
                   (community?.name || "").slice(0, 2).toUpperCase()
                 )}
               </div>
-              <h2 className="mt-4 text-xl font-semibold">{community.name}</h2>
+              <h2 className="mt-4 text-xl font-semibold">{community?.name}</h2>
               <p className="mt-1 text-sm text-white/50">
-                {community.members ?? 0} members
+                {community?.members ?? 0} members
               </p>
               <p className="mt-3 max-w-md text-sm text-white/70">
-                {community.description}
+                {community?.description}
               </p>
             </div>
 
@@ -740,16 +739,16 @@ export default function CommunityDetailPage() {
             <div className="mt-6 space-y-4 border-t border-white/10 pt-5 text-sm text-white/70">
               <div className="flex items-center justify-between">
                 <span>Location</span>
-                <span className="text-white/50">{community.locationName}</span>
+                <span className="text-white/50">{community?.locationName}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>Next session</span>
-                <span className="text-white/50">{community.nextSession}</span>
+                <span className="text-white/50">{community?.nextSession}</span>
               </div>
               <div className="flex flex-wrap gap-2">
-                {community.tags.map((tag) => (
+                {(community?.tags || []).map((tag) => (
                   <span
-                    key={`${community.id}-${tag}`}
+                    key={`${community?._id || id}-${tag}`}
                     className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/60"
                   >
                     {tag}
