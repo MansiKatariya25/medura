@@ -17,11 +17,11 @@ export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = doctorSchema.safeParse(json);
   if (!parsed.success) {
-    const pwdIssue = parsed.error.errors.find((e) => e.path?.[0] === "password");
+    const pwdIssue = parsed.error.issues.find((e) => e.path?.[0] === "password");
     if (pwdIssue) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
-    const msg = parsed.error.errors
+    const msg = parsed.error.issues
       .map((e) => {
         const path = Array.isArray(e.path) && e.path.length ? e.path.join(".") : "";
         return path ? `${path}: ${e.message}` : e.message;
