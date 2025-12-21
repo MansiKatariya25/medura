@@ -192,6 +192,7 @@ export default function CommunityDetailPage() {
 
         ws.addEventListener("open", () => {
           setWsStatus("connected");
+          setOnlineCount((prev) => Math.max(prev, 1));
           if (reconnectTimerRef.current) {
             clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = null;
@@ -237,7 +238,9 @@ export default function CommunityDetailPage() {
             };
             if (payload.groupId !== id) return;
             if (payload.type === "online") {
-              setOnlineCount(payload.count || 0);
+              setOnlineCount(
+                typeof payload.count === "number" ? payload.count : 1,
+              );
               return;
             }
             if (payload.type === "message" && payload.text) {
