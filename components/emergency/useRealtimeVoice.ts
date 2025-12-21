@@ -38,16 +38,12 @@ export function useRealtimeVoice(active: boolean) {
 
   const startAnalysis = useCallback((stream: MediaStream) => {
     try {
-<<<<<<< HEAD
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-=======
       const AudioCtx =
         typeof window !== "undefined"
           ? (window.AudioContext ||
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (window as any).webkitAudioContext)
           : undefined;
->>>>>>> dbda97fb4d5d09bcdbf4f867e1c2ad559b89d448
       if (!AudioCtx) return;
       audioContextRef.current = new AudioCtx();
       const analyser = audioContextRef.current.createAnalyser();

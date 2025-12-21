@@ -1649,21 +1649,12 @@ export default function HomeDashboard({ userName }: { userName: string }) {
                 End
               </button>
             </div>
-<<<<<<< HEAD
-            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="h-[360px] w-full object-cover"
-=======
             <div className="overflow-hidden rounded-xl border border-white/10">
               <iframe
                 title="Call"
                 src={`https://meet.jit.si/${videoCallRoom}`}
                 className="h-105 w-full bg-black"
                 allow="camera; microphone; fullscreen; display-capture"
->>>>>>> dbda97fb4d5d09bcdbf4f867e1c2ad559b89d448
               />
               <div className="absolute bottom-4 right-4 h-28 w-40 overflow-hidden rounded-xl border border-white/20 bg-black">
                 <video
