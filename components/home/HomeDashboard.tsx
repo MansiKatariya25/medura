@@ -35,6 +35,14 @@ import type { Doctor } from "@/schemas/doctor";
 
 type IconComponent = ComponentType<{ className?: string }>;
 
+type NotificationItem = {
+  id: string;
+  title: string;
+  body: string;
+  time: string;
+  read: boolean;
+};
+
 const categoryIconMap: Record<string, IconComponent> = {
   all: HeartPulse,
   neuro: Brain,
@@ -153,12 +161,42 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   const [slideProgress, setSlideProgress] = useState(0);
   const [countdown, setCountdown] = useState(10);
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const collapsedCategoryLimit = 6;
   const holdTimer = useRef<number | null>(null);
   const startX = useRef(0);
   const countdownRef = useRef<number | null>(null);
   const readyTimeout = useRef<number | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem("medura:notifications");
+    if (raw) {
+      try {
+        setNotifications(JSON.parse(raw) as NotificationItem[]);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => {
+      const raw = window.localStorage.getItem("medura:notifications");
+      if (!raw) return;
+      try {
+        setNotifications(JSON.parse(raw) as NotificationItem[]);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("medura:notifications-update", handler);
+    return () => window.removeEventListener("medura:notifications-update", handler);
+  }, []);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   useEffect(() => {
     let mounted = true;
@@ -400,10 +438,16 @@ export default function HomeDashboard({ userName }: { userName: string }) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="rounded-full border border-white/20 bg-white/25 p-3 text-white/70"
+              className="relative rounded-full border border-white/20 bg-white/25 p-3 text-white/70"
               aria-label="Notifications"
+              onClick={() => router.push("/notifications")}
             >
               <Bell className="h-4 w-4 text-white" />
+              {unreadCount > 0 ? (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                  {unreadCount}
+                </span>
+              ) : null}
             </button>
           </div>
         </div>
