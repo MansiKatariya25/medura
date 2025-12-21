@@ -419,7 +419,7 @@ export default function CommunityPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search communities"
-            className="min-w-[220px] flex-1 bg-transparent text-sm text-white/80 placeholder:text-white/30 focus:outline-none"
+            className="min-w-55 flex-1 bg-transparent text-sm text-white/80 placeholder:text-white/30 focus:outline-none"
           />
         </div>
 
@@ -435,7 +435,7 @@ export default function CommunityPage() {
           >
             <span className="inline-flex items-center gap-2">
               Public communities
-              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/15 px-1 text-[10px] text-white/80">
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white/15 px-1 text-[10px] text-white/80">
                 {publicCount}
               </span>
             </span>
@@ -447,7 +447,7 @@ export default function CommunityPage() {
           >
             <span className="inline-flex items-center gap-2">
               Joined
-              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/15 px-1 text-[10px] text-white/80">
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white/15 px-1 text-[10px] text-white/80">
                 {joinedCount}
               </span>
             </span>
@@ -522,7 +522,7 @@ export default function CommunityPage() {
                     href={`/community/${id}`}
                     className="flex w-full items-center gap-3 rounded-[18px] px-3 py-1 text-left transition hover:bg-white/5"
                   >
-                    <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#4D7CFF] to-[#7C3AED] text-[11px] font-semibold text-white">
+                    <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-[#4D7CFF] to-[#7C3AED] text-[11px] font-semibold text-white">
                       {community.avatarUrl ? (
                         <img
                           src={community.avatarUrl}
@@ -547,7 +547,7 @@ export default function CommunityPage() {
                         {community.locationName ? (
                           <span className="flex min-w-0 items-center gap-1 text-white/40">
                             <MapPin className="h-3 w-3" />
-                            <span className="max-w-[140px] truncate">
+                            <span className="max-w-35 truncate">
                               {community.locationName?.slice(0, 15)}...
                             </span>
                           </span>
