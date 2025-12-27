@@ -24,6 +24,7 @@ export default function AmbulanceBottomNav() {
   const hideForChat =
     pathname.startsWith("/community/") && pathname !== "/community";
   const hideForAuth = pathname.startsWith("/auth");
+  const hideForLanding = pathname === "/" || pathname === "/landing";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -59,7 +60,7 @@ export default function AmbulanceBottomNav() {
     return "";
   }, [pathname]);
 
-  if (!isAmbulance || hideForChat || hideForAuth) return null;
+  if (!isAmbulance || hideForChat || hideForAuth || hideForLanding) return null;
 
   return (
     <nav className="fixed bottom-6 left-1/2 z-20 w-[90%] max-w-[420px] -translate-x-1/2 rounded-full bg-[#151621] px-6 py-4 text-white shadow-[0_15px_35px_rgba(0,0,0,0.4)] lg:max-w-lg">

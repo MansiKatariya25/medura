@@ -166,6 +166,18 @@ export default function EmergencyRouteMap({
               if (sourceLayer === "3d_model" || ly.id === "3d_model_data") return false;
               return true;
             });
+            if (styleJson.sources && apiKey) {
+              Object.values(styleJson.sources).forEach((source: any) => {
+                if (typeof source.url === "string") {
+                  source.url = withOlaApiKey(source.url, apiKey);
+                }
+                if (Array.isArray(source.tiles)) {
+                  source.tiles = source.tiles.map((tileUrl: string) =>
+                    withOlaApiKey(tileUrl, apiKey),
+                  );
+                }
+              });
+            }
             if (styleJson.layers.length !== originalLength) {
               console.warn("Sanitized map style: removed layers referencing missing 3d_model source-layer");
             }
