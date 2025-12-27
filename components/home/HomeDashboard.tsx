@@ -61,7 +61,6 @@ const navItems = [
   { id: "profile", label: "Profile", icon: User },
 ];
 
-const profileImageKey = "medura:profile-image";
 
 function useLocationLabel() {
   const initial =
@@ -366,20 +365,24 @@ export default function HomeDashboard({ userName }: { userName: string }) {
   }, [doctorPage, fetchDoctors, hasMoreDoctors, loadingDoctors]);
 
   useEffect(() => {
-    const read = () => {
-      if (typeof window === "undefined") return;
-      const stored = window.localStorage.getItem(profileImageKey);
-      setAvatarImage(stored);
-    };
-    read();
-    const listener = (event: StorageEvent) => {
-      if (event.key === profileImageKey) {
-        read();
+    let mounted = true;
+    const loadProfileImage = async () => {
+      try {
+        const res = await fetch("/api/profile");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted) {
+          setAvatarImage(data?.profile?.image ?? null);
+        }
+      } catch {
+        // ignore
       }
     };
-    window.addEventListener("storage", listener);
-    return () => window.removeEventListener("storage", listener);
-  }, [profileImageKey]);
+    loadProfileImage();
+    return () => {
+      mounted = false;
+    };
+  }, [session?.user?.id]);
 
   useEffect(() => {
     return () => {
