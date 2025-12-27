@@ -107,7 +107,7 @@ export default function DoctorPage() {
       if (!res.ok) throw new Error(data?.error || "Failed to reserve");
       setMessage("Appointment reserved");
       // navigate back or to confirmation
-      setTimeout(() => router.push("/"), 900);
+      setTimeout(() => router.push("/home"), 900);
     } catch (err: any) {
       setMessage(err.message ?? "Error");
     } finally {
